@@ -24,7 +24,15 @@ function createBackend() {
   console.log(`Starting backend server from: ${backendPath}`);
   console.log(`Using Python: ${pythonExecutable}`);
 
-  console.log(`Starting backend server from: ${backendPath}`);
+  // Check if Python executable exists
+  if (!fs.existsSync(pythonExecutable)) {
+    console.error(`Python executable not found at: ${pythonExecutable}`);
+    // Fallback to system Python
+    const systemPython = spawn('python', ['--version'], { stdio: 'pipe' });
+    systemPython.on('error', () => {
+      console.error('System Python not found either!');
+    });
+  }
 
   backendProcess = spawn(pythonExecutable, ['-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', String(BACKEND_PORT)], {
     cwd: backendPath,
@@ -33,7 +41,14 @@ function createBackend() {
       PYTHONPATH: backendPath,
       DATA_DIR: dataDir
     },
-    stdio: ['ignore', 'pipe', 'pipe']
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true
+  });
+
+  console.log(`Backend process PID: ${backendProcess.pid}`);
+
+  backendProcess.on('spawn', () => {
+    console.log(`Backend process spawned successfully: PID ${backendProcess.pid}`);
   });
 
   backendProcess.stdout.on('data', (data) => {
