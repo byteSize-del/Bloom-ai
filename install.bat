@@ -19,7 +19,6 @@ python --version
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Python is not installed or not in PATH
     echo Please install Python 3.10+ from https://www.python.org/downloads/
-    echo Make sure to check "Add Python to PATH" during installation
     pause
     exit /b 1
 )
@@ -50,39 +49,27 @@ if %ERRORLEVEL% NEQ 0 (
 echo npm found!
 echo.
 
-REM Check Ollama
+REM Check Ollama (optional)
 echo [4/5] Checking Ollama installation...
-ollama --version
+where ollama >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo WARNING: Ollama is not installed or not in PATH
-    echo Bloom requires Ollama to run AI models
-    echo.
-    set /p INSTALL_OLLAMA="Do you want to open Ollama download page? (Y/N): "
-    if /i "%INSTALL_OLLAMA%"=="Y" (
-        start https://ollama.ai/download
-    )
-    echo You can install Ollama later, but the app won't work without it
-    echo.
+    echo Ollama not found - this is OK, you can install it later
+    echo Download from: https://ollama.ai
 ) else (
+    ollama --version
     echo Ollama found!
-    echo.
 )
+echo.
 
-REM Check if Ollama has models
+REM Check if Ollama has models (optional)
 echo [5/5] Checking for Ollama models...
-ollama list
+ollama list >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo.
-    echo WARNING: No Ollama models found
-    echo.
-    echo Bloom requires at least one model to work
-    echo Run this command after installation:
-    echo   ollama pull llama3
-    echo.
+    echo No Ollama models found - you can install later with: ollama pull llama3
 ) else (
     echo Ollama models found!
-    echo.
 )
+echo.
 
 echo ========================================
 echo  Installing Dependencies
@@ -120,7 +107,7 @@ echo.
 REM Install Node dependencies
 echo [3/3] Installing Node.js dependencies...
 echo This may take a few minutes...
-npm install
+call npm install
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Failed to install Node.js dependencies
     pause
