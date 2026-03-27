@@ -1,35 +1,74 @@
 {
-  "name": "offline-ai-chat",
+  "name": "bloom-ai-chat",
   "version": "1.0.0",
-  "description": "Offline AI Desktop Chat Application with Ollama",
+  "description": "Premium Offline AI Chat with Ollama",
   "main": "main.js",
-  "author": "Offline AI Chat",
+  "author": "byteSize-del",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
-    "watch-backend": "watchfiles --watch backend/ 'python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000'"
+    "build:win": "electron-builder --win --x64",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "installer": "node scripts/create-installer.js"
   },
   "devDependencies": {
     "electron": "^41.1.0",
     "electron-builder": "^26.8.1"
   },
   "build": {
-    "appId": "com.offline-ai.chat",
-    "productName": "Offline AI Chat",
+    "appId": "com.bloom.ai-chat",
+    "productName": "Bloom AI Chat",
+    "artifactName": "Bloom-Setup-${version}.${ext}",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "build"
     },
     "files": [
       "main.js",
       "preload.js",
-      "backend/",
-      "frontend/",
-      "package.json"
+      "backend/**/*",
+      "frontend/**/*",
+      "package.json",
+      ".venv/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": ".venv",
+        "to": "venv",
+        "filter": ["**/*"]
+      }
     ],
     "win": {
-      "target": "nsis",
-      "icon": "frontend/assets/icon.svg"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "frontend/assets/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "frontend/assets/icon.ico",
+      "uninstallerIcon": "frontend/assets/icon.ico",
+      "installerHeaderIcon": "frontend/assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Bloom AI Chat"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "frontend/assets/icon.icns",
+      "category": "public.app-category.utilities"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "frontend/assets/icon.png",
+      "category": "Utility"
     }
   }
 }

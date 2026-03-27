@@ -28,36 +28,51 @@ Before installing Bloom, ensure you have:
 
 ## Installation
 
-### 1. Clone the Repository
+### Option 1: Download Pre-built Installer (Recommended)
+
+Download the latest installer from [GitHub Releases](https://github.com/yourusername/bloom/releases):
+- **Windows**: `Bloom-Setup-1.0.0.exe`
+- **macOS**: `Bloom-Setup-1.0.0.dmg`
+- **Linux**: `Bloom-Setup-1.0.0.AppImage`
+
+### Option 2: Build from Source
+
+#### Quick Install (Automated)
 
 ```bash
+# Clone the repository
 git clone https://github.com/yourusername/bloom.git
 cd bloom
+
+# Run the automated installer
+# Windows:
+install.bat
+
+# macOS/Linux:
+chmod +x install.sh
+./install.sh
 ```
 
-### 2. Install Python Dependencies
+#### Manual Install
 
 ```bash
+# 1. Clone
+git clone https://github.com/yourusername/bloom.git
+cd bloom
+
+# 2. Create Python virtual environment
 python -m venv .venv
-.venv\Scripts\pip.exe install -r backend\requirements.txt
-```
 
-### 3. Install Node Dependencies
+# 3. Install Python dependencies
+.venv\Scripts\pip.exe install -r backend\requirements.txt  # Windows
+source .venv/bin/activate && pip install -r backend/requirements.txt  # macOS/Linux
 
-```bash
+# 4. Install Node dependencies
 npm install
-```
 
-### 4. Run the Application
-
-**Windows:**
-```bash
-start.bat
-```
-
-**macOS/Linux:**
-```bash
-npm start
+# 5. Run the app
+start.bat  # Windows
+npm start  # macOS/Linux
 ```
 
 ## Project Structure
