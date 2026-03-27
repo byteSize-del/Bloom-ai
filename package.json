@@ -47,28 +47,14 @@
           "arch": ["x64"]
         }
       ],
-      "icon": "frontend/assets/icon.ico",
       "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "frontend/assets/icon.ico",
-      "uninstallerIcon": "frontend/assets/icon.ico",
-      "installerHeaderIcon": "frontend/assets/icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Bloom AI Chat"
-    },
-    "mac": {
-      "target": "dmg",
-      "icon": "frontend/assets/icon.icns",
-      "category": "public.app-category.utilities"
-    },
-    "linux": {
-      "target": ["AppImage", "deb"],
-      "icon": "frontend/assets/icon.png",
-      "category": "Utility"
     }
   }
 }
