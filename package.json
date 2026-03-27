@@ -1,0 +1,35 @@
+{
+  "name": "offline-ai-chat",
+  "version": "1.0.0",
+  "description": "Offline AI Desktop Chat Application with Ollama",
+  "main": "main.js",
+  "author": "Offline AI Chat",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "watch-backend": "watchfiles --watch backend/ 'python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000'"
+  },
+  "devDependencies": {
+    "electron": "^41.1.0",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "com.offline-ai.chat",
+    "productName": "Offline AI Chat",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "backend/",
+      "frontend/",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "frontend/assets/icon.svg"
+    }
+  }
+}
