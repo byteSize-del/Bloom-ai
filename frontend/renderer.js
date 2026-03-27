@@ -24,10 +24,19 @@ const systemPromptInput = document.getElementById('system-prompt-input');
 const temperatureSlider = document.getElementById('temperature-slider');
 const tempValue = document.getElementById('temp-value');
 const defaultModelSelect = document.getElementById('default-model-select');
+const developerModeToggle = document.getElementById('developer-mode-toggle');
+const agenticCloudToggle = document.getElementById('agentic-cloud-toggle');
 const clearHistoryBtn = document.getElementById('clear-history-btn');
 const charCount = document.getElementById('char-count');
 const addImageBtn = document.getElementById('add-image-btn');
 const attachBtn = document.getElementById('attach-btn');
+const windowTopbar = document.getElementById('window-topbar');
+const windowMinimizeBtn = document.getElementById('window-minimize');
+const windowMaximizeBtn = document.getElementById('window-maximize');
+const windowCloseBtn = document.getElementById('window-close');
+const windowMenu = document.getElementById('window-menu');
+const menuPopover = document.getElementById('menu-popover');
+const sidebar = document.querySelector('.sidebar');
 
 // State
 let currentSessionId = null;
@@ -39,10 +48,298 @@ let settings = {
     theme: 'dark',
     systemPrompt: 'You are a helpful AI assistant. Provide clear, concise responses.',
     temperature: 0.7,
-    defaultModel: 'llama3'
+    defaultModel: 'llama3',
+    developerMode: true,
+    agenticCloudMode: true
 };
 let isGenerating = false;
 let abortController = null;
+let zoomLevel = 1;
+let activeMenuKey = null;
+let isFullscreenMode = false;
+
+function normalizeRoleForBackend(role) {
+    const normalized = String(role || '').toLowerCase();
+    if (normalized === 'assistant' || normalized === 'ai' || normalized === 'bot' || normalized === 'model') {
+        return 'assistant';
+    }
+    if (normalized === 'system') {
+        return 'system';
+    }
+    return 'user';
+}
+
+function isAssistantRole(role) {
+    const normalized = String(role || '').toLowerCase();
+    return normalized === 'assistant' || normalized === 'ai' || normalized === 'bot' || normalized === 'model';
+}
+
+async function getResponseErrorDetails(response) {
+    try {
+        const payload = await response.json();
+        return payload?.detail || JSON.stringify(payload);
+    } catch {
+        try {
+            return await response.text();
+        } catch {
+            return '';
+        }
+    }
+}
+
+function setWindowMaximizeIcon(isMaximized) {
+    if (!windowMaximizeBtn) return;
+    windowMaximizeBtn.innerHTML = isMaximized
+        ? '<i class="fa-regular fa-clone"></i>'
+        : '<i class="fa-regular fa-square"></i>';
+    windowMaximizeBtn.title = isMaximized ? 'Restore' : 'Maximize';
+}
+
+function isCloudModel(name) {
+    const modelName = String(name || '').toLowerCase();
+    return modelName.includes(':cloud') || modelName.includes('-cloud');
+}
+
+function getEffectiveSystemPrompt() {
+    const base = String(settings.systemPrompt || '').trim();
+    const cloud = isCloudModel(currentModel);
+    const parts = [];
+
+    if (base) {
+        parts.push(base);
+    }
+
+    if (settings.developerMode) {
+        parts.push(
+            'You are a senior developer assistant. Give production-quality code, explain key decisions briefly, include edge cases, and suggest tests.'
+        );
+    }
+
+    if (cloud && settings.agenticCloudMode) {
+        parts.push(
+            'When useful, act agentically: propose a short plan, execute step-by-step reasoning internally, return actionable implementation details, and provide final verified output.'
+        );
+    }
+
+    return parts.join('\n\n').trim();
+}
+
+function parseDesktopCommand(rawMessage) {
+    const text = String(rawMessage || '').trim().toLowerCase();
+    if (!text) return null;
+
+    const patterns = [
+        { appId: 'notepad', label: 'Notepad', regex: /^(open|launch|start)\s+(notepad|note[\s-]?pad)$/ },
+        { appId: 'calculator', label: 'Calculator', regex: /^(open|launch|start)\s+(calculator|calc)$/ },
+        { appId: 'explorer', label: 'File Explorer', regex: /^(open|launch|start)\s+(file\s+explorer|explorer)$/ },
+        { appId: 'cmd', label: 'Command Prompt', regex: /^(open|launch|start)\s+(cmd|command\s+prompt|terminal)$/ },
+        { appId: 'powershell', label: 'PowerShell', regex: /^(open|launch|start)\s+(powershell|power\s+shell)$/ },
+        { appId: 'vscode', label: 'VS Code', regex: /^(open|launch|start)\s+(vscode|vs\s*code|visual\s+studio\s+code)$/ }
+    ];
+
+    for (const pattern of patterns) {
+        if (pattern.regex.test(text)) {
+            return { appId: pattern.appId, label: pattern.label };
+        }
+    }
+
+    return null;
+}
+
+async function executeDesktopCommand(commandInfo) {
+    try {
+        const result = await window.systemAPI?.openApp?.(commandInfo.appId);
+        if (result?.success) {
+            const content = `Opened **${commandInfo.label}** successfully.`;
+            showMessage(content, 'ai');
+            currentMessages.push({
+                role: 'assistant',
+                content,
+                timestamp: new Date().toISOString()
+            });
+        } else {
+            const content = `I tried to open **${commandInfo.label}**, but it failed.\n\nDetails: ${result?.error || 'Unknown error'}`;
+            showMessage(content, 'ai');
+            currentMessages.push({
+                role: 'assistant',
+                content,
+                timestamp: new Date().toISOString()
+            });
+        }
+    } catch (error) {
+        const content = `I tried to open **${commandInfo.label}**, but it failed.\n\nDetails: ${error.message || String(error)}`;
+        showMessage(content, 'ai');
+        currentMessages.push({
+            role: 'assistant',
+            content,
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    try {
+        await saveCurrentSession();
+    } catch (saveError) {
+        console.error('Failed to save session:', saveError);
+    }
+}
+
+function applyZoomLevel(level) {
+    zoomLevel = Math.max(0.8, Math.min(1.4, level));
+    document.body.style.zoom = String(zoomLevel);
+}
+
+function getMenuItems(menuKey) {
+    const sidebarCollapsed = sidebar?.classList.contains('collapsed');
+    const isMaximized = windowMaximizeBtn?.title === 'Restore';
+
+    const menuMap = {
+        file: [
+            { label: 'New Chat', action: 'newChat', shortcut: 'Ctrl+N' },
+            { label: 'Clear History', action: 'clearHistory' },
+            { separator: true },
+            { label: 'Exit Bloom', action: 'closeApp' }
+        ],
+        edit: [
+            { label: 'Undo', action: 'undo', shortcut: 'Ctrl+Z' },
+            { label: 'Redo', action: 'redo', shortcut: 'Ctrl+Y' },
+            { separator: true },
+            { label: 'Cut', action: 'cut', shortcut: 'Ctrl+X' },
+            { label: 'Copy', action: 'copy', shortcut: 'Ctrl+C' },
+            { label: 'Paste', action: 'paste', shortcut: 'Ctrl+V' },
+            { separator: true },
+            { label: 'Select All', action: 'selectAll', shortcut: 'Ctrl+A' }
+        ],
+        view: [
+            { label: 'Reload', action: 'reload', shortcut: 'Ctrl+R' },
+            { label: sidebarCollapsed ? 'Show Sidebar' : 'Hide Sidebar', action: 'toggleSidebar' },
+            { separator: true },
+            { label: 'Zoom In', action: 'zoomIn', shortcut: 'Ctrl++' },
+            { label: 'Zoom Out', action: 'zoomOut', shortcut: 'Ctrl+-' },
+            { label: 'Actual Size', action: 'zoomReset', shortcut: 'Ctrl+0' },
+            { separator: true },
+            { label: isFullscreenMode ? 'Exit Full Screen' : 'Enter Full Screen', action: 'toggleFullscreen', shortcut: 'F11' },
+            { label: 'Toggle Developer Tools', action: 'toggleDevTools', shortcut: 'Ctrl+Shift+I' }
+        ],
+        window: [
+            { label: 'Minimize', action: 'minimize' },
+            { label: isMaximized ? 'Restore Window' : 'Maximize Window', action: 'toggleMaximize' },
+            { label: 'Close Window', action: 'closeApp' }
+        ],
+        help: [
+            { label: 'About Bloom', action: 'about' },
+            { label: 'Open Help Center', action: 'openHelpCenter' }
+        ]
+    };
+
+    return menuMap[menuKey] || [];
+}
+
+function closeMenuPopover() {
+    if (menuPopover) {
+        menuPopover.hidden = true;
+        menuPopover.innerHTML = '';
+    }
+    activeMenuKey = null;
+}
+
+function openMenuPopover(menuKey, anchorButton) {
+    if (!menuPopover || !anchorButton) return;
+
+    const items = getMenuItems(menuKey);
+    menuPopover.innerHTML = '';
+
+    items.forEach((item) => {
+        if (item.separator) {
+            const separator = document.createElement('div');
+            separator.className = 'menu-separator';
+            menuPopover.appendChild(separator);
+            return;
+        }
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'menu-item';
+        button.dataset.action = item.action;
+        button.innerHTML = `
+            <span>${item.label}</span>
+            <span class="menu-item-shortcut">${item.shortcut || ''}</span>
+        `;
+        menuPopover.appendChild(button);
+    });
+
+    const rect = anchorButton.getBoundingClientRect();
+    menuPopover.style.left = `${rect.left}px`;
+    menuPopover.style.top = `${rect.bottom + 6}px`;
+    menuPopover.hidden = false;
+    activeMenuKey = menuKey;
+}
+
+async function runAppCommand(command) {
+    if (window.appCommands?.run) {
+        await window.appCommands.run(command);
+    }
+}
+
+async function handleMenuAction(action) {
+    switch (action) {
+        case 'newChat':
+            await createNewSession();
+            break;
+        case 'clearHistory':
+            clearHistoryBtn?.click();
+            break;
+        case 'closeApp':
+            await window.windowControls?.close?.();
+            break;
+        case 'undo':
+        case 'redo':
+        case 'cut':
+        case 'copy':
+        case 'paste':
+        case 'selectAll':
+            await runAppCommand(action);
+            break;
+        case 'reload':
+            await runAppCommand('reload');
+            break;
+        case 'toggleSidebar':
+            sidebar?.classList.toggle('collapsed');
+            break;
+        case 'zoomIn':
+            applyZoomLevel(zoomLevel + 0.1);
+            break;
+        case 'zoomOut':
+            applyZoomLevel(zoomLevel - 0.1);
+            break;
+        case 'zoomReset':
+            applyZoomLevel(1);
+            break;
+        case 'toggleFullscreen':
+            if (window.windowControls?.toggleFullscreen) {
+                isFullscreenMode = await window.windowControls.toggleFullscreen();
+            }
+            break;
+        case 'toggleDevTools':
+            await runAppCommand('toggleDevTools');
+            break;
+        case 'minimize':
+            await window.windowControls?.minimize?.();
+            break;
+        case 'toggleMaximize': {
+            const maximized = await window.windowControls?.toggleMaximize?.();
+            setWindowMaximizeIcon(Boolean(maximized));
+            break;
+        }
+        case 'about':
+            alert('Bloom AI Chat\nVersion 1.0.1\n\nOffline-first AI desktop chat.');
+            break;
+        case 'openHelpCenter':
+            window.open('https://ollama.com', '_blank');
+            break;
+        default:
+            break;
+    }
+}
 
 // Marked configuration with custom renderer
 marked.setOptions({
@@ -57,14 +354,25 @@ marked.setOptions({
 // Custom renderer for code blocks with copy button
 const renderer = new marked.Renderer();
 renderer.code = function (code, lang) {
-    const language = lang || 'plaintext';
-    const escapedCode = code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    let codeText = '';
+    let language = lang || 'plaintext';
+
+    // Marked v16 may pass a token object instead of raw string.
+    if (typeof code === 'object' && code !== null) {
+        codeText = String(code.text || '');
+        language = code.lang || code.language || language || 'plaintext';
+    } else {
+        codeText = String(code || '');
+    }
+
+    const safeLanguage = String(language || 'plaintext').replace(/[^\w-]/g, '') || 'plaintext';
+    const escapedCode = codeText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     return `
         <div class="code-block-wrapper">
             <button class="copy-code-btn" onclick="copyCode(this)">
                 <i class="fa-regular fa-copy"></i> Copy
             </button>
-            <pre><code class="language-${language}">${escapedCode}</code></pre>
+            <pre><code class="language-${safeLanguage}">${escapedCode}</code></pre>
         </div>
     `;
 };
@@ -118,6 +426,13 @@ async function sendMessage() {
         updateSessionTitle(message);
     }
 
+    // Execute supported desktop commands directly
+    const desktopCommand = parseDesktopCommand(message);
+    if (desktopCommand) {
+        await executeDesktopCommand(desktopCommand);
+        return;
+    }
+
     // Get AI response
     await getAIResponse(message);
 }
@@ -140,86 +455,148 @@ async function getAIResponse(userMessage) {
             body: JSON.stringify({
                 message: userMessage,
                 model: currentModel,
-                history: currentMessages.slice(-10).map(m => ({ role: m.role, content: m.content })),
+                history: currentMessages
+                    .slice(-12)
+                    .map(m => ({ role: normalizeRoleForBackend(m.role), content: m.content || '' })),
                 temperature: settings.temperature,
-                system_prompt: settings.systemPrompt
+                system_prompt: getEffectiveSystemPrompt()
             }),
             signal: abortController.signal
         });
 
         if (!response.ok) {
-            throw new Error(`Server error: ${response.status}`);
+            const details = await getResponseErrorDetails(response);
+            throw new Error(`Server error ${response.status}${details ? ` - ${details}` : ''}`);
         }
 
-        // Remove typing indicator
-        removeTypingIndicator(typingId);
+        if (!response.body) {
+            throw new Error('Empty response body from backend');
+        }
 
-        // Process streaming response
+        // Process streaming response (SSE with buffered parsing)
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
 
         let fullResponse = '';
-        const messageDiv = addMessageToUI('ai', '', true);
-        const messageTextElement = messageDiv.querySelector('.message-text');
+        let messageDiv = null;
+        let messageTextElement = null;
+        let sseBuffer = '';
+        let streamDone = false;
+
+        function ensureAssistantMessage() {
+            if (!messageDiv) {
+                removeTypingIndicator(typingId);
+                messageDiv = addMessageToUI('ai', '', true);
+                messageTextElement = messageDiv.querySelector('.message-text');
+            }
+            return { messageDiv, messageTextElement };
+        }
 
         try {
-            while (true) {
+            while (!streamDone) {
                 const { done, value } = await reader.read();
                 if (done) break;
 
-                const chunk = decoder.decode(value, { stream: true });
-                const lines = chunk.split('\n');
+                sseBuffer += decoder.decode(value, { stream: true });
+                const events = sseBuffer.split('\n\n');
+                sseBuffer = events.pop() || '';
 
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const data = JSON.parse(line.slice(6));
+                for (const event of events) {
+                    const lines = event.split('\n');
+                    for (const line of lines) {
+                        if (!line.startsWith('data:')) continue;
+
+                        const payload = line.slice(5).trim();
+                        if (!payload) continue;
+
+                        let data;
+                        try {
+                            data = JSON.parse(payload);
+                        } catch (parseError) {
+                            console.warn('Skipping malformed SSE chunk:', payload, parseError);
+                            continue;
+                        }
 
                         if (data.error) {
+                            const ensured = ensureAssistantMessage();
                             fullResponse += `\n\n**Error:** ${data.error}`;
-                            messageTextElement.innerHTML = marked.parse(fullResponse);
-                            addMessageActions(messageDiv, fullResponse);
+                            ensured.messageTextElement.innerHTML = marked.parse(fullResponse);
+                            addMessageActions(ensured.messageDiv, fullResponse);
                             return;
                         }
 
                         if (data.done) {
+                            streamDone = true;
                             break;
                         }
 
                         if (data.content) {
+                            const ensured = ensureAssistantMessage();
                             fullResponse += data.content;
-                            messageTextElement.innerHTML = marked.parse(fullResponse);
+                            ensured.messageTextElement.innerHTML = marked.parse(fullResponse);
                             scrollToBottom();
                         }
                     }
                 }
             }
+
+            // Best-effort parse of any trailing buffered event without delimiter.
+            if (!streamDone && sseBuffer.trim().startsWith('data:')) {
+                const payload = sseBuffer.trim().slice(5).trim();
+                if (payload) {
+                    try {
+                        const data = JSON.parse(payload);
+                        if (data.content) {
+                            const ensured = ensureAssistantMessage();
+                            fullResponse += data.content;
+                            ensured.messageTextElement.innerHTML = marked.parse(fullResponse);
+                        }
+                    } catch {
+                        // Ignore incomplete trailing data.
+                    }
+                }
+            }
         } catch (error) {
             if (error.name === 'AbortError') {
+                const ensured = ensureAssistantMessage();
                 fullResponse += '\n\n*[Generation stopped by user]*';
-                messageTextElement.innerHTML = marked.parse(fullResponse);
+                ensured.messageTextElement.innerHTML = marked.parse(fullResponse);
             } else {
                 throw error;
             }
         }
 
+        if (!fullResponse.trim()) {
+            const ensured = ensureAssistantMessage();
+            fullResponse = '*No response content returned.*';
+            ensured.messageTextElement.innerHTML = marked.parse(fullResponse);
+        }
+
         // Add AI response to messages
         currentMessages.push({
-            role: 'ai',
+            role: 'assistant',
             content: fullResponse,
             timestamp: new Date().toISOString()
         });
 
         // Add message actions (copy, regenerate, delete)
-        addMessageActions(messageDiv, fullResponse);
+        if (messageDiv) {
+            addMessageActions(messageDiv, fullResponse);
+        }
 
-        // Auto-save session
-        await saveCurrentSession();
+        // Auto-save session (non-fatal if persistence fails)
+        try {
+            await saveCurrentSession();
+        } catch (saveError) {
+            console.error('Failed to save session:', saveError);
+        }
 
     } catch (error) {
         console.error('Error getting AI response:', error);
         removeTypingIndicator(typingId);
         if (error.name !== 'AbortError') {
-            showMessage('Error getting AI response. Is the backend server running?', 'ai');
+            const reason = error?.message ? `\n\nDetails: ${error.message}` : '';
+            showMessage(`Error getting AI response.${reason}`, 'ai');
         }
     } finally {
         isGenerating = false;
@@ -256,15 +633,22 @@ async function regenerateResponse() {
 
 // UI Functions
 function addMessageToUI(role, content, isStreaming = false) {
+    const uiRole = String(role || '').toLowerCase() === 'user' ? 'user' : 'ai';
+    const normalizedContent = String(content || '');
+    const renderedContent = isStreaming
+        ? ''
+        : (uiRole === 'user'
+            ? escapeHtml(normalizedContent).replace(/\n/g, '<br>')
+            : renderAiMarkdown(normalizedContent));
     const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${role === 'user' ? 'user-message' : 'ai-message'}`;
+    messageDiv.className = `message ${uiRole === 'user' ? 'user-message' : 'ai-message'}`;
     messageDiv.dataset.timestamp = new Date().toISOString();
 
-    const avatarIcon = role === 'user' ? 'fa-user' : 'fa-spa';
-    const authorName = role === 'user' ? 'You' : 'Bloom AI';
+    const avatarIcon = uiRole === 'user' ? 'fa-user' : 'fa-spa';
+    const authorName = uiRole === 'user' ? 'You' : 'Bloom AI';
 
     messageDiv.innerHTML = `
-        <div class="message-avatar ${role === 'user' ? 'user-avatar' : 'ai-avatar'}">
+        <div class="message-avatar ${uiRole === 'user' ? 'user-avatar' : 'ai-avatar'}">
             <i class="fa-solid ${avatarIcon}"></i>
         </div>
         <div class="message-content">
@@ -272,13 +656,9 @@ function addMessageToUI(role, content, isStreaming = false) {
                 <span class="message-author">${authorName}</span>
                 <span class="message-time">${formatTime(new Date())}</span>
             </div>
-            <div class="message-text">${content}</div>
+            <div class="message-text">${renderedContent}</div>
         </div>
     `;
-
-    if (isStreaming) {
-        messageDiv.querySelector('.message-text').innerHTML = '';
-    }
 
     messageContainer.appendChild(messageDiv);
     scrollToBottom();
@@ -323,6 +703,25 @@ function regenerateLast(btn) {
     regenerateResponse();
 }
 
+function escapeHtml(text) {
+    return String(text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function renderAiMarkdown(content) {
+    const text = String(content || '');
+    try {
+        return marked.parse(text);
+    } catch (error) {
+        console.error('Markdown render failed, using plain text fallback:', error);
+        return escapeHtml(text).replace(/\n/g, '<br>');
+    }
+}
+
 function deleteMessage(btn) {
     const messageDiv = btn.closest('.message');
     const isUserMessage = messageDiv.classList.contains('user-message');
@@ -359,19 +758,29 @@ window.deleteMessage = deleteMessage;
 window.copyCode = copyCode;
 
 function showTypingIndicator() {
+    const indicatorId = `typing-indicator-${Date.now()}`;
     const typingDiv = document.createElement('div');
     typingDiv.className = 'message ai-message';
-    typingDiv.id = 'typing-indicator';
+    typingDiv.id = indicatorId;
 
     typingDiv.innerHTML = `
         <div class="message-avatar ai-avatar">
             <i class="fa-solid fa-spa"></i>
         </div>
         <div class="message-content">
-            <div class="typing-indicator">
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
+            <div class="thinking-card">
+                <div class="thinking-title">
+                    <i class="fa-solid fa-brain"></i>
+                    <span>Bloom is thinking (${currentModel || 'model'})</span>
+                </div>
+                <div class="thinking-wave">
+                    <span></span><span></span><span></span><span></span><span></span>
+                </div>
+                <div class="typing-indicator">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
             </div>
         </div>
     `;
@@ -379,7 +788,7 @@ function showTypingIndicator() {
     messageContainer.appendChild(typingDiv);
     scrollToBottom();
 
-    return typingDiv.id;
+    return indicatorId;
 }
 
 function removeTypingIndicator(id) {
@@ -388,14 +797,18 @@ function removeTypingIndicator(id) {
 }
 
 function showMessage(text, role = 'ai') {
+    const uiRole = String(role || '').toLowerCase() === 'user' ? 'user' : 'ai';
+    const renderedContent = uiRole === 'user'
+        ? escapeHtml(text).replace(/\n/g, '<br>')
+        : renderAiMarkdown(text);
     const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${role === 'user' ? 'user-message' : 'ai-message'}`;
+    messageDiv.className = `message ${uiRole === 'user' ? 'user-message' : 'ai-message'}`;
 
-    const avatarIcon = role === 'user' ? 'fa-user' : 'fa-spa';
-    const authorName = role === 'user' ? 'You' : 'Bloom AI';
+    const avatarIcon = uiRole === 'user' ? 'fa-user' : 'fa-spa';
+    const authorName = uiRole === 'user' ? 'You' : 'Bloom AI';
 
     messageDiv.innerHTML = `
-        <div class="message-avatar ${role === 'user' ? 'user-avatar' : 'ai-avatar'}">
+        <div class="message-avatar ${uiRole === 'user' ? 'user-avatar' : 'ai-avatar'}">
             <i class="fa-solid ${avatarIcon}"></i>
         </div>
         <div class="message-content">
@@ -403,7 +816,7 @@ function showMessage(text, role = 'ai') {
                 <span class="message-author">${authorName}</span>
                 <span class="message-time">${formatTime(new Date())}</span>
             </div>
-            <div class="message-text">${marked.parse(text)}</div>
+            <div class="message-text">${renderedContent}</div>
         </div>
     `;
 
@@ -441,8 +854,12 @@ async function createNewSession() {
 }
 
 async function loadSession(sessionId) {
-    const session = await fetch(`http://127.0.0.1:8000/history/${sessionId}`)
-        .then(r => r.json());
+    const sessionResponse = await fetch(`http://127.0.0.1:8000/history/${sessionId}`);
+    if (!sessionResponse.ok) {
+        const details = await getResponseErrorDetails(sessionResponse);
+        throw new Error(`Load session failed ${sessionResponse.status}${details ? ` - ${details}` : ''}`);
+    }
+    const session = await sessionResponse.json();
 
     if (!session) return;
 
@@ -460,7 +877,7 @@ async function loadSession(sessionId) {
     for (const msg of currentMessages) {
         if (msg.role === 'user') {
             const msgDiv = addMessageToUI('user', msg.content);
-        } else if (msg.role === 'ai') {
+        } else if (isAssistantRole(msg.role)) {
             const msgDiv = addMessageToUI('ai', msg.content);
             addMessageActions(msgDiv, msg.content);
         }
@@ -481,6 +898,10 @@ async function saveCurrentSession() {
                 messages: currentMessages
             })
         });
+        if (!response.ok) {
+            const details = await getResponseErrorDetails(response);
+            throw new Error(`Save failed ${response.status}${details ? ` - ${details}` : ''}`);
+        }
 
         const result = await response.json();
         currentSessionId = result.sessionId;
@@ -490,7 +911,7 @@ async function saveCurrentSession() {
             method: 'DELETE'
         }).catch(() => { });
 
-        await fetch('http://127.0.0.1:8000/history/save', {
+        const response = await fetch('http://127.0.0.1:8000/history/save', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -499,6 +920,14 @@ async function saveCurrentSession() {
                 messages: currentMessages
             })
         });
+        if (!response.ok) {
+            const details = await getResponseErrorDetails(response);
+            throw new Error(`Save failed ${response.status}${details ? ` - ${details}` : ''}`);
+        }
+        const result = await response.json();
+        if (result?.sessionId) {
+            currentSessionId = result.sessionId;
+        }
     }
 
     loadSessions();
@@ -514,7 +943,7 @@ async function updateSessionTitle(firstMessage) {
             method: 'DELETE'
         }).catch(() => { });
 
-        await fetch('http://127.0.0.1:8000/history/save', {
+        const titleSaveResponse = await fetch('http://127.0.0.1:8000/history/save', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -523,6 +952,12 @@ async function updateSessionTitle(firstMessage) {
                 messages: messages
             })
         });
+        if (titleSaveResponse.ok) {
+            const saveData = await titleSaveResponse.json();
+            if (saveData?.sessionId) {
+                currentSessionId = saveData.sessionId;
+            }
+        }
     }
 
     loadSessions();
@@ -554,7 +989,12 @@ function renderSessions() {
         const sessionDiv = document.createElement('div');
         sessionDiv.className = `session-item ${currentSessionId === session.id ? 'active' : ''}`;
         sessionDiv.dataset.sessionId = session.id;
-        sessionDiv.onclick = () => loadSession(session.id);
+        sessionDiv.onclick = () => {
+            loadSession(session.id).catch((error) => {
+                console.error('Failed to load session:', error);
+                showMessage(`Could not load this session.\n\nDetails: ${error.message}`, 'ai');
+            });
+        };
 
         sessionDiv.innerHTML = `
             <div class="session-icon">
@@ -562,7 +1002,7 @@ function renderSessions() {
             </div>
             <div class="session-info">
                 <div class="session-title">${session.title}</div>
-                <div class="session-meta">${session.model} • ${formatTime(new Date(session.createdAt))} • ${session.messageCount} msgs</div>
+                <div class="session-meta">${session.model} - ${formatTime(new Date(session.createdAt))} - ${session.messageCount} msgs</div>
             </div>
             <div class="session-delete" onclick="deleteSession(event, '${session.id}')">
                 <i class="fa-solid fa-trash"></i>
@@ -645,6 +1085,8 @@ async function loadSettings() {
         temperatureSlider.value = settings.temperature || 0.7;
         updateTempValue();
         defaultModelSelect.value = settings.defaultModel || '';
+        developerModeToggle.checked = settings.developerMode !== false;
+        agenticCloudToggle.checked = settings.agenticCloudMode !== false;
         currentModel = settings.defaultModel || currentModel;
         updateModelDisplay();
     } catch (error) {
@@ -662,6 +1104,31 @@ function updateTempValue() {
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', async () => {
+    applyZoomLevel(1);
+
+    if (window.windowControls?.isMaximized) {
+        try {
+            const isMaximized = await window.windowControls.isMaximized();
+            setWindowMaximizeIcon(isMaximized);
+            window.windowControls.onMaximizedChange((nextState) => {
+                setWindowMaximizeIcon(nextState);
+            });
+        } catch (error) {
+            console.warn('Window control initialization failed:', error);
+        }
+    }
+
+    if (window.windowControls?.isFullscreen) {
+        try {
+            isFullscreenMode = await window.windowControls.isFullscreen();
+            window.windowControls.onFullscreenChange((nextState) => {
+                isFullscreenMode = nextState;
+            });
+        } catch (error) {
+            console.warn('Fullscreen state initialization failed:', error);
+        }
+    }
+
     // Check backend status
     backendStatus.textContent = 'Checking backend...';
 
@@ -701,6 +1168,106 @@ chatInput.addEventListener('keydown', (e) => {
 
 sendBtn.addEventListener('click', sendMessage);
 
+windowMenu?.addEventListener('click', (event) => {
+    const target = event.target.closest('.window-menu-item[data-menu]');
+    if (!target) return;
+
+    const requestedMenu = target.dataset.menu;
+    if (activeMenuKey === requestedMenu && !menuPopover?.hidden) {
+        closeMenuPopover();
+        return;
+    }
+
+    openMenuPopover(requestedMenu, target);
+});
+
+menuPopover?.addEventListener('click', async (event) => {
+    const target = event.target.closest('.menu-item[data-action]');
+    if (!target) return;
+    const { action } = target.dataset;
+    closeMenuPopover();
+    await handleMenuAction(action);
+});
+
+windowMinimizeBtn?.addEventListener('click', async () => {
+    if (window.windowControls?.minimize) {
+        await window.windowControls.minimize();
+    }
+});
+
+windowMaximizeBtn?.addEventListener('click', async () => {
+    if (window.windowControls?.toggleMaximize) {
+        const isMaximized = await window.windowControls.toggleMaximize();
+        setWindowMaximizeIcon(isMaximized);
+    }
+});
+
+windowCloseBtn?.addEventListener('click', async () => {
+    if (window.windowControls?.close) {
+        await window.windowControls.close();
+    }
+});
+
+windowTopbar?.addEventListener('dblclick', async (event) => {
+    if (event.target.closest('.window-controls') || event.target.closest('.window-menu')) {
+        return;
+    }
+    if (window.windowControls?.toggleMaximize) {
+        const isMaximized = await window.windowControls.toggleMaximize();
+        setWindowMaximizeIcon(isMaximized);
+    }
+});
+
+document.addEventListener('keydown', async (event) => {
+    if (event.key === 'Escape') {
+        closeMenuPopover();
+    }
+
+    const ctrlOrMeta = event.ctrlKey || event.metaKey;
+    if (ctrlOrMeta && event.key.toLowerCase() === 'n') {
+        event.preventDefault();
+        await createNewSession();
+        return;
+    }
+
+    if (ctrlOrMeta && !event.shiftKey && event.key.toLowerCase() === 'r') {
+        event.preventDefault();
+        await runAppCommand('reload');
+        return;
+    }
+
+    if (ctrlOrMeta && event.shiftKey && event.key.toLowerCase() === 'i') {
+        event.preventDefault();
+        await runAppCommand('toggleDevTools');
+        return;
+    }
+
+    if (ctrlOrMeta && event.key === '=') {
+        event.preventDefault();
+        applyZoomLevel(zoomLevel + 0.1);
+        return;
+    }
+
+    if (ctrlOrMeta && event.key === '-') {
+        event.preventDefault();
+        applyZoomLevel(zoomLevel - 0.1);
+        return;
+    }
+
+    if (ctrlOrMeta && event.key === '0') {
+        event.preventDefault();
+        applyZoomLevel(1);
+        return;
+    }
+
+    if (event.key === 'F11') {
+        event.preventDefault();
+        if (window.windowControls?.toggleFullscreen) {
+            isFullscreenMode = await window.windowControls.toggleFullscreen();
+        }
+    }
+});
+
 // Stop button
 stopBtn.addEventListener('click', stopGeneration);
 
@@ -730,6 +1297,10 @@ settingsToggle.addEventListener('click', () => {
 document.addEventListener('click', (e) => {
     if (!settingsPanel.contains(e.target) && !settingsToggle.contains(e.target)) {
         settingsPanel.classList.remove('open');
+    }
+
+    if (!menuPopover?.contains(e.target) && !windowMenu?.contains(e.target)) {
+        closeMenuPopover();
     }
 });
 
@@ -761,6 +1332,16 @@ temperatureSlider.addEventListener('input', () => {
 // Default Model Select
 defaultModelSelect.addEventListener('change', async (e) => {
     settings.defaultModel = e.target.value;
+    saveSettings();
+});
+
+developerModeToggle?.addEventListener('change', () => {
+    settings.developerMode = developerModeToggle.checked;
+    saveSettings();
+});
+
+agenticCloudToggle?.addEventListener('change', () => {
+    settings.agenticCloudMode = agenticCloudToggle.checked;
     saveSettings();
 });
 

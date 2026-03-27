@@ -210,7 +210,9 @@ class ChatHistoryManager:
             "theme": "dark",
             "systemPrompt": "You are a helpful AI assistant. Provide clear, concise responses.",
             "temperature": 0.7,
-            "defaultModel": "llama3"
+            "defaultModel": "llama3",
+            "developerMode": True,
+            "agenticCloudMode": True
         }
 
         try:

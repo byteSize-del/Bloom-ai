@@ -64,3 +64,43 @@ contextBridge.exposeInMainWorld('envInfo', {
   platform: process.platform,
   arch: process.arch
 });
+
+// Window controls
+contextBridge.exposeInMainWorld('windowControls', {
+  minimize: async () => {
+    return await ipcRenderer.invoke('window/minimize');
+  },
+  toggleMaximize: async () => {
+    return await ipcRenderer.invoke('window/toggle-maximize');
+  },
+  close: async () => {
+    return await ipcRenderer.invoke('window/close');
+  },
+  isMaximized: async () => {
+    return await ipcRenderer.invoke('window/is-maximized');
+  },
+  toggleFullscreen: async () => {
+    return await ipcRenderer.invoke('window/toggle-fullscreen');
+  },
+  isFullscreen: async () => {
+    return await ipcRenderer.invoke('window/is-fullscreen');
+  },
+  onMaximizedChange: (callback) => {
+    ipcRenderer.on('window/maximized', (_event, isMaximized) => callback(Boolean(isMaximized)));
+  },
+  onFullscreenChange: (callback) => {
+    ipcRenderer.on('window/fullscreen', (_event, isFullscreen) => callback(Boolean(isFullscreen)));
+  }
+});
+
+contextBridge.exposeInMainWorld('appCommands', {
+  run: async (command) => {
+    return await ipcRenderer.invoke('app/command', command);
+  }
+});
+
+contextBridge.exposeInMainWorld('systemAPI', {
+  openApp: async (appId) => {
+    return await ipcRenderer.invoke('system/open-app', appId);
+  }
+});

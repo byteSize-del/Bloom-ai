@@ -57,6 +57,14 @@ class SessionRequest(BaseModel):
     model: str
     messages: List[Dict[str, str]] = []
 
+def normalize_chat_role(role: str) -> str:
+    normalized = str(role or "").strip().lower()
+    if normalized in {"assistant", "ai", "bot", "model"}:
+        return "assistant"
+    if normalized == "system":
+        return "system"
+    return "user"
+
 
 # Health endpoint
 @app.get("/health")
@@ -94,7 +102,10 @@ async def chat_endpoint(request: ChatRequest):
 
                 # Add conversation history
                 for msg in request.history:
-                    messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+                    messages.append({
+                        "role": normalize_chat_role(msg.get("role", "user")),
+                        "content": msg.get("content", "")
+                    })
 
                 # Add current user message
                 messages.append({"role": "user", "content": request.message})

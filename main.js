@@ -17,9 +17,14 @@ if (!fs.existsSync(dataDir)) {
 }
 
 function createBackend() {
-  const backendPath = path.join(__dirname, 'backend');
-  // Use the Python from .venv first, fallback to system Python
-  const pythonExecutable = path.join(__dirname, '.venv', 'Scripts', 'python.exe');
+  const isDev = !app.isPackaged;
+  const backendPath = isDev
+    ? path.join(__dirname, 'backend')
+    : path.join(process.resourcesPath, 'app.asar.unpacked', 'backend');
+  // Use bundled Python in production, local .venv in development
+  const pythonExecutable = isDev
+    ? path.join(__dirname, '.venv', 'Scripts', 'python.exe')
+    : path.join(process.resourcesPath, 'venv', 'Scripts', 'python.exe');
 
   console.log(`Starting backend server from: ${backendPath}`);
   console.log(`Using Python: ${pythonExecutable}`);
@@ -103,26 +108,21 @@ function createWindow() {
     },
     titleBarStyle: 'hidden',
     title: 'Offline AI Chat',
-    show: false,
+    show: true,
     icon: path.join(__dirname, 'frontend', 'assets', 'icon.png')
   });
 
   // Load the frontend
   mainWindow.loadFile('frontend/index.html');
 
-  // Show window when ready
+  // Focus the window when ready
   mainWindow.on('ready-to-show', () => {
     console.log('Window ready-to-show event fired');
-    mainWindow.show();
+    mainWindow.focus();
   });
 
-  // Fallback: show window after 5 seconds even if ready-to-show didn't fire
-  setTimeout(() => {
-    if (mainWindow && !mainWindow.isVisible()) {
-      console.log('Fallback: showing window after timeout');
-      mainWindow.show();
-    }
-  }, 5000);
+  // Ensure window is focused on creation
+  mainWindow.focus();
 
   // Handle external links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -155,6 +155,22 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  mainWindow.on('maximize', () => {
+    mainWindow.webContents.send('window/maximized', true);
+  });
+
+  mainWindow.on('unmaximize', () => {
+    mainWindow.webContents.send('window/maximized', false);
+  });
+
+  mainWindow.on('enter-full-screen', () => {
+    mainWindow.webContents.send('window/fullscreen', true);
+  });
+
+  mainWindow.on('leave-full-screen', () => {
+    mainWindow.webContents.send('window/fullscreen', false);
+  });
 }
 
 async function startBackendAndCreateWindow() {
@@ -181,7 +197,25 @@ async function startBackendAndCreateWindow() {
   }
 }
 
-app.whenReady().then(startBackendAndCreateWindow);
+// Request single instance lock before app readiness handlers
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  // Handle second instance (when user clicks app icon again)
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+      mainWindow.setAlwaysOnTop(true);
+      setTimeout(() => mainWindow.setAlwaysOnTop(false), 100);
+    } else {
+      createWindow();
+    }
+  });
+
+  app.whenReady().then(startBackendAndCreateWindow);
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -195,6 +229,12 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (mainWindow === null) {
     createWindow();
+  } else {
+    // Bring window to front when dock icon is clicked
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+    mainWindow.setAlwaysOnTop(true);
+    setTimeout(() => mainWindow.setAlwaysOnTop(false), 100);
   }
 });
 
@@ -379,4 +419,116 @@ ipcMain.handle('file/choose-directory', async () => {
     properties: ['openDirectory']
   });
   return result || [];
+});
+
+ipcMain.handle('window/minimize', async (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (window) {
+    window.minimize();
+  }
+});
+
+ipcMain.handle('window/toggle-maximize', async (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (!window) return false;
+
+  if (window.isMaximized()) {
+    window.unmaximize();
+  } else {
+    window.maximize();
+  }
+
+  return window.isMaximized();
+});
+
+ipcMain.handle('window/close', async (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (window) {
+    window.close();
+  }
+});
+
+ipcMain.handle('window/is-maximized', async (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  return window ? window.isMaximized() : false;
+});
+
+ipcMain.handle('window/toggle-fullscreen', async (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (!window) return false;
+  window.setFullScreen(!window.isFullScreen());
+  return window.isFullScreen();
+});
+
+ipcMain.handle('window/is-fullscreen', async (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  return window ? window.isFullScreen() : false;
+});
+
+ipcMain.handle('app/command', async (event, command) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (!window) return false;
+  const webContents = window.webContents;
+
+  switch (command) {
+    case 'undo':
+      webContents.undo();
+      return true;
+    case 'redo':
+      webContents.redo();
+      return true;
+    case 'cut':
+      webContents.cut();
+      return true;
+    case 'copy':
+      webContents.copy();
+      return true;
+    case 'paste':
+      webContents.paste();
+      return true;
+    case 'selectAll':
+      webContents.selectAll();
+      return true;
+    case 'reload':
+      webContents.reload();
+      return true;
+    case 'toggleDevTools':
+      webContents.toggleDevTools();
+      return true;
+    default:
+      return false;
+  }
+});
+
+ipcMain.handle('system/open-app', async (event, appId) => {
+  if (process.platform !== 'win32') {
+    return { success: false, error: 'System app launch is currently supported on Windows only.' };
+  }
+
+  const normalized = String(appId || '').toLowerCase().trim();
+  const appMap = {
+    notepad: { command: 'notepad.exe', label: 'Notepad' },
+    calculator: { command: 'calc.exe', label: 'Calculator' },
+    explorer: { command: 'explorer.exe', label: 'File Explorer' },
+    cmd: { command: 'cmd.exe', label: 'Command Prompt' },
+    powershell: { command: 'powershell.exe', label: 'PowerShell' },
+    vscode: { command: 'code', label: 'VS Code' }
+  };
+
+  const target = appMap[normalized];
+  if (!target) {
+    return { success: false, error: `Unsupported app command: ${normalized}` };
+  }
+
+  try {
+    const child = spawn(target.command, [], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: false
+    });
+    child.unref();
+    return { success: true, app: normalized, label: target.label };
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
 });

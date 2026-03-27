@@ -137,7 +137,13 @@ class OllamaHandler:
                                     # Skip malformed JSON lines
                                     continue
                     else:
+                        raw_error = await response.aread()
+                        error_text = raw_error.decode(errors="ignore").strip()
+                        if len(error_text) > 300:
+                            error_text = error_text[:300] + "..."
                         error_msg = f"Ollama API error: {response.status_code}"
+                        if error_text:
+                            error_msg = f"{error_msg} - {error_text}"
                         yield {"error": error_msg}
 
         except httpx.TimeoutException:

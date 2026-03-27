@@ -1,6 +1,6 @@
 {
   "name": "bloom-ai-chat",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Premium Offline AI Chat with Ollama",
   "main": "main.js",
   "author": "byteSize-del",
@@ -37,14 +37,18 @@
       {
         "from": ".venv",
         "to": "venv",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "requestedExecutionLevel": "asInvoker"
@@ -58,6 +62,9 @@
       "runAfterFinish": true,
       "include": "build/installer.nsh",
       "differentialPackage": false
-    }
+    },
+    "asarUnpack": [
+      "backend/**/*"
+    ]
   }
 }
