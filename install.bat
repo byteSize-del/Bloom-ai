@@ -15,7 +15,7 @@ echo.
 
 REM Check Python
 echo [1/5] Checking Python installation...
-python --version >nul 2>&1
+python --version
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Python is not installed or not in PATH
     echo Please install Python 3.10+ from https://www.python.org/downloads/
@@ -23,39 +23,36 @@ if %ERRORLEVEL% NEQ 0 (
     pause
     exit /b 1
 )
-python --version
 echo Python found!
 echo.
 
 REM Check Node.js
 echo [2/5] Checking Node.js installation...
-node --version >nul 2>&1
+node --version
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Node.js is not installed or not in PATH
     echo Please install Node.js 18+ from https://nodejs.org/
     pause
     exit /b 1
 )
-node --version
 echo Node.js found!
 echo.
 
 REM Check npm
 echo [3/5] Checking npm installation...
-npm --version >nul 2>&1
+npm --version
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: npm is not installed or not in PATH
     echo Please install Node.js from https://nodejs.org/
     pause
     exit /b 1
 )
-npm --version
 echo npm found!
 echo.
 
 REM Check Ollama
 echo [4/5] Checking Ollama installation...
-ollama --version >nul 2>&1
+ollama --version
 if %ERRORLEVEL% NEQ 0 (
     echo WARNING: Ollama is not installed or not in PATH
     echo Bloom requires Ollama to run AI models
@@ -67,15 +64,15 @@ if %ERRORLEVEL% NEQ 0 (
     echo You can install Ollama later, but the app won't work without it
     echo.
 ) else (
-    ollama --version
     echo Ollama found!
+    echo.
 )
-echo.
 
 REM Check if Ollama has models
 echo [5/5] Checking for Ollama models...
-ollama list >nul 2>&1
+ollama list
 if %ERRORLEVEL% NEQ 0 (
+    echo.
     echo WARNING: No Ollama models found
     echo.
     echo Bloom requires at least one model to work
@@ -83,10 +80,9 @@ if %ERRORLEVEL% NEQ 0 (
     echo   ollama pull llama3
     echo.
 ) else (
-    ollama list
     echo Ollama models found!
+    echo.
 )
-echo.
 
 echo ========================================
 echo  Installing Dependencies
@@ -98,6 +94,7 @@ echo [1/3] Creating Python virtual environment...
 if exist ".venv" (
     echo Virtual environment already exists, skipping...
 ) else (
+    echo Creating virtual environment...
     python -m venv .venv
     if %ERRORLEVEL% NEQ 0 (
         echo ERROR: Failed to create virtual environment
@@ -122,6 +119,7 @@ echo.
 
 REM Install Node dependencies
 echo [3/3] Installing Node.js dependencies...
+echo This may take a few minutes...
 npm install
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Failed to install Node.js dependencies
