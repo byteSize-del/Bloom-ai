@@ -50,11 +50,14 @@
       "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Bloom AI Chat"
+      "shortcutName": "Bloom AI Chat",
+      "runAfterFinish": true,
+      "include": "build/installer.nsh",
+      "differentialPackage": false
     }
   }
 }
