@@ -97,8 +97,17 @@ function createWindow() {
 
   // Show window when ready
   mainWindow.on('ready-to-show', () => {
+    console.log('Window ready-to-show event fired');
     mainWindow.show();
   });
+
+  // Fallback: show window after 5 seconds even if ready-to-show didn't fire
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isVisible()) {
+      console.log('Fallback: showing window after timeout');
+      mainWindow.show();
+    }
+  }, 5000);
 
   // Handle external links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -135,11 +144,25 @@ function createWindow() {
 
 async function startBackendAndCreateWindow() {
   try {
-    await createBackend();
+    // Create window first so user sees something
     createWindow();
+
+    // Start backend in background with timeout
+    const backendPromise = createBackend();
+    const timeoutPromise = new Promise((resolve) => {
+      setTimeout(() => resolve({ error: 'timeout' }), 15000);
+    });
+
+    const result = await Promise.race([backendPromise, timeoutPromise]);
+
+    if (result?.error === 'timeout') {
+      console.warn('Backend startup timed out, showing window anyway');
+      dialog.showErrorBox('Backend Warning', 'The backend server took too long to start. The app will continue but some features may not work.\n\nPlease ensure Ollama is running and Python backend dependencies are installed.');
+    }
   } catch (error) {
     console.error('Startup failed:', error);
-    app.quit();
+    // Show error but keep window open
+    dialog.showErrorBox('Startup Error', `Failed to start backend: ${error.message}\n\nThe app will continue but AI features may not work. Check console for details.`);
   }
 }
 
