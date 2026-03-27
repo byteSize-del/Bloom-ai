@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(python -c \"import fastapi; import uvicorn; import httpx; print\\(''Dependencies OK''\\)\")",
-      "Bash(/c/Users/sayye/OneDrive/Desktop/Bloom/.venv/Scripts/python.exe -c \"import fastapi; import uvicorn; import httpx; print\\(''Dependencies OK''\\)\")"
-    ]
-  }
-}
