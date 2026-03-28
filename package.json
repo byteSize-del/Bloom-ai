@@ -40,9 +40,14 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
       }
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -60,6 +65,9 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Bloom AI Chat",
       "runAfterFinish": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
       "include": "build/installer.nsh",
       "differentialPackage": false
     },

@@ -58,6 +58,7 @@ let abortController = null;
 let zoomLevel = 1;
 let activeMenuKey = null;
 let isFullscreenMode = false;
+let isInputComposing = false;
 
 function normalizeRoleForBackend(role) {
     const normalized = String(role || '').toLowerCase();
@@ -404,8 +405,12 @@ async function waitBackendReady() {
 
 // Chat API Functions
 async function sendMessage() {
+    ensureChatInputReady();
     const message = chatInput.value.trim();
-    if (!message || isGenerating) return;
+    if (!message || isGenerating) {
+        focusChatInput();
+        return;
+    }
 
     // Hide welcome message, show chat container
     welcomeMessage.style.display = 'none';
@@ -604,6 +609,7 @@ async function getAIResponse(userMessage) {
         abortController = null;
         sendBtn.disabled = false;
         stopBtn.classList.remove('active');
+        ensureChatInputReady();
     }
 }
 
@@ -868,14 +874,29 @@ function updateCharCount() {
 function focusChatInput(placeCursorAtEnd = true) {
     if (!chatInput) return;
 
-    // Retry on next frame so focus still works during UI transitions.
-    requestAnimationFrame(() => {
+    const focusNow = () => {
         chatInput.focus({ preventScroll: true });
         if (placeCursorAtEnd) {
             const end = chatInput.value.length;
             chatInput.setSelectionRange(end, end);
         }
-    });
+    };
+
+    // Two-phase focus makes it resilient to UI transitions/click races.
+    requestAnimationFrame(focusNow);
+    setTimeout(focusNow, 120);
+}
+
+function ensureChatInputReady() {
+    if (!chatInput) return;
+    if (chatInput.disabled) chatInput.disabled = false;
+    if (chatInput.readOnly) chatInput.readOnly = false;
+    if (chatInput.style.pointerEvents === 'none') {
+        chatInput.style.pointerEvents = 'auto';
+    }
+    if (chatInput.tabIndex < 0) {
+        chatInput.tabIndex = 0;
+    }
 }
 
 function resetComposerState() {
@@ -904,6 +925,7 @@ async function createNewSession() {
     chatInput.style.height = 'auto';
     updateSessionTitle('');
     currentModelDisplay.textContent = currentModel || 'Select a model';
+    ensureChatInputReady();
     focusChatInput(false);
 }
 
@@ -939,6 +961,7 @@ async function loadSession(sessionId) {
     }
 
     scrollToBottom();
+    ensureChatInputReady();
     focusChatInput(false);
 }
 
@@ -1216,13 +1239,33 @@ document.addEventListener('DOMContentLoaded', async () => {
 chatInput.addEventListener('input', updateCharCount);
 inputWrapper?.addEventListener('click', (event) => {
     if (event.target.closest('button')) return;
+    ensureChatInputReady();
     focusChatInput();
 });
 
+chatInput.addEventListener('compositionstart', () => {
+    isInputComposing = true;
+});
+
+chatInput.addEventListener('compositionend', () => {
+    isInputComposing = false;
+    updateCharCount();
+});
+
 chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !isInputComposing) {
         e.preventDefault();
         sendMessage();
+    }
+});
+
+window.addEventListener('focus', () => {
+    ensureChatInputReady();
+});
+
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        ensureChatInputReady();
     }
 });
 

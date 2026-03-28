@@ -94,6 +94,10 @@ function createBackend() {
 }
 
 function createWindow() {
+  const appIconPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'icon.png')
+    : path.join(__dirname, 'frontend', 'assets', 'icon.png');
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -109,7 +113,7 @@ function createWindow() {
     titleBarStyle: 'hidden',
     title: 'Offline AI Chat',
     show: true,
-    icon: path.join(__dirname, 'frontend', 'assets', 'icon.png')
+    icon: appIconPath
   });
 
   // Load the frontend
