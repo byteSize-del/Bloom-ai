@@ -28,6 +28,7 @@ const developerModeToggle = document.getElementById('developer-mode-toggle');
 const agenticCloudToggle = document.getElementById('agentic-cloud-toggle');
 const clearHistoryBtn = document.getElementById('clear-history-btn');
 const charCount = document.getElementById('char-count');
+const inputWrapper = document.querySelector('.input-wrapper');
 const addImageBtn = document.getElementById('add-image-btn');
 const attachBtn = document.getElementById('attach-btn');
 const windowTopbar = document.getElementById('window-topbar');
@@ -369,7 +370,7 @@ renderer.code = function (code, lang) {
     const escapedCode = codeText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     return `
         <div class="code-block-wrapper">
-            <button class="copy-code-btn" onclick="copyCode(this)">
+            <button class="copy-code-btn" onclick="copyCode(this, event)">
                 <i class="fa-regular fa-copy"></i> Copy
             </button>
             <pre><code class="language-${safeLanguage}">${escapedCode}</code></pre>
@@ -672,7 +673,7 @@ function addMessageActions(messageDiv, content) {
     actionsDiv.className = 'message-actions';
 
     actionsDiv.innerHTML = `
-        <button class="message-action-btn" onclick="copyMessage(this)">
+        <button class="message-action-btn" onclick="copyMessage(this, event)">
             <i class="fa-regular fa-copy"></i> Copy
         </button>
         <button class="message-action-btn" onclick="regenerateLast(this)">
@@ -687,14 +688,28 @@ function addMessageActions(messageDiv, content) {
     scrollToBottom();
 }
 
-function copyMessage(btn) {
+function withStableChatScroll(updateFn) {
+    const previousScrollTop = chatArea.scrollTop;
+    updateFn();
+    chatArea.scrollTop = previousScrollTop;
+}
+
+function copyMessage(btn, event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+
     const messageDiv = btn.closest('.message');
     const text = messageDiv.querySelector('.message-text').innerText;
     navigator.clipboard.writeText(text).then(() => {
         const originalHtml = btn.innerHTML;
-        btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+        withStableChatScroll(() => {
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+        });
+        btn.blur();
         setTimeout(() => {
-            btn.innerHTML = originalHtml;
+            withStableChatScroll(() => {
+                btn.innerHTML = originalHtml;
+            });
         }, 2000);
     });
 }
@@ -740,13 +755,21 @@ function deleteMessage(btn) {
     saveCurrentSession();
 }
 
-function copyCode(btn) {
+function copyCode(btn, event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+
     const codeBlock = btn.nextElementSibling.querySelector('code');
     const code = codeBlock.innerText;
     navigator.clipboard.writeText(code).then(() => {
-        btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+        withStableChatScroll(() => {
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+        });
+        btn.blur();
         setTimeout(() => {
-            btn.innerHTML = '<i class="fa-regular fa-copy"></i> Copy';
+            withStableChatScroll(() => {
+                btn.innerHTML = '<i class="fa-regular fa-copy"></i> Copy';
+            });
         }, 2000);
     });
 }
@@ -842,18 +865,50 @@ function updateCharCount() {
     chatInput.style.height = Math.min(chatInput.scrollHeight, 200) + 'px';
 }
 
+function focusChatInput(placeCursorAtEnd = true) {
+    if (!chatInput) return;
+
+    // Retry on next frame so focus still works during UI transitions.
+    requestAnimationFrame(() => {
+        chatInput.focus({ preventScroll: true });
+        if (placeCursorAtEnd) {
+            const end = chatInput.value.length;
+            chatInput.setSelectionRange(end, end);
+        }
+    });
+}
+
+function resetComposerState() {
+    stopGeneration();
+    isGenerating = false;
+    abortController = null;
+    sendBtn.disabled = false;
+    stopBtn.classList.remove('active');
+
+    // Remove stale typing cards if a previous request was interrupted.
+    messageContainer.querySelectorAll('.thinking-card').forEach((card) => {
+        card.closest('.message')?.remove();
+    });
+}
+
 // Session Management
 async function createNewSession() {
+    resetComposerState();
     currentSessionId = null;
     currentMessages = [];
     messageContainer.innerHTML = '';
     welcomeMessage.style.display = 'flex';
     messageContainer.style.display = 'none';
+    chatInput.value = '';
+    updateCharCount();
+    chatInput.style.height = 'auto';
     updateSessionTitle('');
     currentModelDisplay.textContent = currentModel || 'Select a model';
+    focusChatInput(false);
 }
 
 async function loadSession(sessionId) {
+    resetComposerState();
     const sessionResponse = await fetch(`http://127.0.0.1:8000/history/${sessionId}`);
     if (!sessionResponse.ok) {
         const details = await getResponseErrorDetails(sessionResponse);
@@ -884,6 +939,7 @@ async function loadSession(sessionId) {
     }
 
     scrollToBottom();
+    focusChatInput(false);
 }
 
 async function saveCurrentSession() {
@@ -1158,6 +1214,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // Input Handling
 chatInput.addEventListener('input', updateCharCount);
+inputWrapper?.addEventListener('click', (event) => {
+    if (event.target.closest('button')) return;
+    focusChatInput();
+});
 
 chatInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1397,6 +1457,9 @@ const observer = new IntersectionObserver((entries) => {
 
 // Auto-scroll when new messages are added
 const chatObserver = new MutationObserver(() => {
-    scrollToBottom();
+    const distanceFromBottom = chatArea.scrollHeight - (chatArea.scrollTop + chatArea.clientHeight);
+    if (distanceFromBottom < 140) {
+        scrollToBottom();
+    }
 });
-chatObserver.observe(messageContainer, { childList: true, subtree: true });
+chatObserver.observe(messageContainer, { childList: true, subtree: false });
