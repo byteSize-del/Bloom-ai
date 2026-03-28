@@ -7,7 +7,7 @@ import os
 import json
 import uuid
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 import asyncio
@@ -16,17 +16,15 @@ import asyncio
 class ChatHistoryManager:
     """Manages chat session persistence and history."""
 
-    def __init__(self, data_dir: str = None):
+    def __init__(self, data_dir: str = None, settings_file: str = None):
         # Use environment variable or default app data directory
         self.data_dir = data_dir or os.environ.get(
             "DATA_DIR",
             os.path.join(os.path.expanduser("~"), ".offline-ai-chat", "sessions")
         )
-        self.settings_file = os.path.join(
-            os.path.expanduser("~"),
-            ".offline-ai-chat",
-            "settings.json"
-        )
+        default_settings_file = os.path.join(os.path.dirname(self.data_dir), "settings.json")
+        self.settings_file = settings_file or default_settings_file
+        os.makedirs(os.path.dirname(self.settings_file), exist_ok=True)
         os.makedirs(self.data_dir, exist_ok=True)
 
     async def save_session(self, session_data) -> str:
@@ -61,7 +59,7 @@ class ChatHistoryManager:
             "id": session_id,
             "title": title,
             "model": model,
-            "createdAt": datetime.utcnow().isoformat(),
+            "createdAt": datetime.now(timezone.utc).isoformat(),
             "messages": messages
         }
 
@@ -148,6 +146,45 @@ class ChatHistoryManager:
             print(f"Error deleting session {session_id}: {e}")
 
         return False
+
+    async def update_session(self, session_id: str, session_data: Dict[str, Any]) -> bool:
+        """
+        Update an existing chat session without changing its ID.
+
+        Args:
+            session_id: Existing session ID
+            session_data: Contains title, model, and messages
+
+        Returns:
+            True if updated, False if session does not exist
+        """
+        filepath = os.path.join(self.data_dir, f"{session_id}.json")
+        if not os.path.exists(filepath):
+            return False
+
+        existing = await self.load_session(session_id)
+        if not existing:
+            return False
+
+        title = session_data.get("title")
+        model = session_data.get("model", existing.get("model", "llama3"))
+        messages = session_data.get("messages", existing.get("messages", []))
+
+        if not title:
+            title = await self.generate_title(messages)
+
+        updated = {
+            "id": session_id,
+            "title": title,
+            "model": model,
+            "createdAt": existing.get("createdAt", datetime.now(timezone.utc).isoformat()),
+            "messages": messages
+        }
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(updated, f, indent=2, ensure_ascii=False)
+
+        return True
 
     async def get_session_count(self) -> int:
         """Get the total number of saved sessions."""

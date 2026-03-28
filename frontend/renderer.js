@@ -38,6 +38,7 @@ const windowCloseBtn = document.getElementById('window-close');
 const windowMenu = document.getElementById('window-menu');
 const menuPopover = document.getElementById('menu-popover');
 const sidebar = document.querySelector('.sidebar');
+const API_BASE = 'http://127.0.0.1:8000';
 
 // State
 let currentSessionId = null;
@@ -59,6 +60,10 @@ let zoomLevel = 1;
 let activeMenuKey = null;
 let isFullscreenMode = false;
 let isInputComposing = false;
+
+function apiUrl(pathname) {
+    return `${API_BASE}${pathname}`;
+}
 
 function normalizeRoleForBackend(role) {
     const normalized = String(role || '').toLowerCase();
@@ -383,7 +388,7 @@ marked.use({ renderer });
 // Backend API Communication
 async function checkBackend() {
     try {
-        const response = await fetch('http://127.0.0.1:8000/health');
+        const response = await fetch(apiUrl('/health'));
         return response.ok;
     } catch {
         return false;
@@ -455,7 +460,7 @@ async function getAIResponse(userMessage) {
     const typingId = showTypingIndicator();
 
     try {
-        const response = await fetch('http://127.0.0.1:8000/chat', {
+        const response = await fetch(apiUrl('/chat'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -923,7 +928,6 @@ async function createNewSession() {
     chatInput.value = '';
     updateCharCount();
     chatInput.style.height = 'auto';
-    updateSessionTitle('');
     currentModelDisplay.textContent = currentModel || 'Select a model';
     ensureChatInputReady();
     focusChatInput(false);
@@ -931,7 +935,7 @@ async function createNewSession() {
 
 async function loadSession(sessionId) {
     resetComposerState();
-    const sessionResponse = await fetch(`http://127.0.0.1:8000/history/${sessionId}`);
+    const sessionResponse = await fetch(apiUrl(`/history/${sessionId}`));
     if (!sessionResponse.ok) {
         const details = await getResponseErrorDetails(sessionResponse);
         throw new Error(`Load session failed ${sessionResponse.status}${details ? ` - ${details}` : ''}`);
@@ -968,7 +972,7 @@ async function loadSession(sessionId) {
 async function saveCurrentSession() {
     if (!currentSessionId) {
         // Create new session
-        const response = await fetch('http://127.0.0.1:8000/history/save', {
+        const response = await fetch(apiUrl('/history/save'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -985,13 +989,9 @@ async function saveCurrentSession() {
         const result = await response.json();
         currentSessionId = result.sessionId;
     } else {
-        // Update existing session
-        await fetch(`http://127.0.0.1:8000/history/${currentSessionId}`, {
-            method: 'DELETE'
-        }).catch(() => { });
-
-        const response = await fetch('http://127.0.0.1:8000/history/save', {
-            method: 'POST',
+        // Update existing session in place
+        let response = await fetch(apiUrl(`/history/${currentSessionId}`), {
+            method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 title: null,
@@ -999,13 +999,34 @@ async function saveCurrentSession() {
                 messages: currentMessages
             })
         });
-        if (!response.ok) {
+
+        if (response.status === 404) {
+            // If local storage was cleared externally, recreate once.
+            const recreate = await fetch(apiUrl('/history/save'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: null,
+                    model: currentModel,
+                    messages: currentMessages
+                })
+            });
+            if (!recreate.ok) {
+                const details = await getResponseErrorDetails(recreate);
+                throw new Error(`Save failed ${recreate.status}${details ? ` - ${details}` : ''}`);
+            }
+            const recreatedData = await recreate.json();
+            if (recreatedData?.sessionId) {
+                currentSessionId = recreatedData.sessionId;
+            }
+        } else if (!response.ok) {
             const details = await getResponseErrorDetails(response);
             throw new Error(`Save failed ${response.status}${details ? ` - ${details}` : ''}`);
-        }
-        const result = await response.json();
-        if (result?.sessionId) {
-            currentSessionId = result.sessionId;
+        } else {
+            const result = await response.json();
+            if (result?.sessionId) {
+                currentSessionId = result.sessionId;
+            }
         }
     }
 
@@ -1018,12 +1039,8 @@ async function updateSessionTitle(firstMessage) {
 
     if (currentSessionId) {
         const messages = [...currentMessages];
-        await fetch(`http://127.0.0.1:8000/history/${currentSessionId}`, {
-            method: 'DELETE'
-        }).catch(() => { });
-
-        const titleSaveResponse = await fetch('http://127.0.0.1:8000/history/save', {
-            method: 'POST',
+        const titleSaveResponse = await fetch(apiUrl(`/history/${currentSessionId}`), {
+            method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 title: title,
@@ -1043,7 +1060,7 @@ async function updateSessionTitle(firstMessage) {
 }
 
 async function loadSessions() {
-    const response = await fetch('http://127.0.0.1:8000/history/load');
+    const response = await fetch(apiUrl('/history/load'));
     const data = await response.json();
     chatHistory = data.sessions || [];
 
@@ -1095,7 +1112,7 @@ function renderSessions() {
 function deleteSession(event, sessionId) {
     event.stopPropagation();
     if (confirm('Delete this session?')) {
-        fetch(`http://127.0.0.1:8000/history/${sessionId}`, {
+        fetch(apiUrl(`/history/${sessionId}`), {
             method: 'DELETE'
         }).then(() => {
             loadSessions();
@@ -1109,7 +1126,7 @@ function deleteSession(event, sessionId) {
 // Model Functions
 async function loadModels() {
     try {
-        const response = await fetch('http://127.0.0.1:8000/models');
+        const response = await fetch(apiUrl('/models'));
         const data = await response.json();
         availableModels = data.models || [];
 
@@ -1155,7 +1172,7 @@ function updateModelDisplay() {
 // Settings Functions
 async function loadSettings() {
     try {
-        const response = await fetch('http://127.0.0.1:8000/settings');
+        const response = await fetch(apiUrl('/settings'));
         settings = await response.json();
 
         // Apply settings to UI
@@ -1384,7 +1401,7 @@ modelSelect.addEventListener('change', async (e) => {
     updateModelDisplay();
 
     // Save settings
-    await fetch('http://127.0.0.1:8000/settings', {
+    await fetch(apiUrl('/settings'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings)
@@ -1451,11 +1468,11 @@ agenticCloudToggle?.addEventListener('change', () => {
 // Clear History
 clearHistoryBtn.addEventListener('click', async () => {
     if (confirm('Are you sure? This will delete all saved sessions.')) {
-        const response = await fetch('http://127.0.0.1:8000/history/load');
+        const response = await fetch(apiUrl('/history/load'));
         const data = await response.json();
 
         for (const session of data.sessions) {
-            await fetch(`http://127.0.0.1:8000/history/${session.id}`, {
+            await fetch(apiUrl(`/history/${session.id}`), {
                 method: 'DELETE'
             });
         }
@@ -1478,7 +1495,7 @@ attachBtn.addEventListener('click', (e) => {
 
 // Save Settings Helper
 async function saveSettings() {
-    await fetch('http://127.0.0.1:8000/settings', {
+    await fetch(apiUrl('/settings'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings)

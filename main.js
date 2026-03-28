@@ -9,6 +9,12 @@ let mainWindow;
 let backendProcess;
 const BACKEND_PORT = 8000;
 const BACKEND_URL = `http://127.0.0.1:${BACKEND_PORT}`;
+const ALLOWED_EXTERNAL_HOSTS = new Set([
+  'ollama.com',
+  'www.ollama.com',
+  'github.com',
+  'www.github.com'
+]);
 
 // Ensure data directory exists
 const dataDir = path.join(app.getPath('appData'), 'OfflineAIChat', 'sessions');
@@ -16,27 +22,51 @@ if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
+function resolvePythonExecutable(isDev) {
+  const baseDir = isDev
+    ? path.join(__dirname, '.venv')
+    : path.join(process.resourcesPath, 'venv');
+
+  const candidates = process.platform === 'win32'
+    ? [
+      path.join(baseDir, 'Scripts', 'python.exe'),
+      path.join(baseDir, 'python.exe')
+    ]
+    : [
+      path.join(baseDir, 'bin', 'python3'),
+      path.join(baseDir, 'bin', 'python')
+    ];
+
+  const bundled = candidates.find((candidate) => fs.existsSync(candidate));
+  if (bundled) {
+    return bundled;
+  }
+
+  return process.platform === 'win32' ? 'python' : 'python3';
+}
+
+function isAllowedExternalUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (!['https:', 'http:'].includes(parsed.protocol)) return false;
+    return ALLOWED_EXTERNAL_HOSTS.has(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 function createBackend() {
   const isDev = !app.isPackaged;
   const backendPath = isDev
     ? path.join(__dirname, 'backend')
     : path.join(process.resourcesPath, 'app.asar.unpacked', 'backend');
-  // Use bundled Python in production, local .venv in development
-  const pythonExecutable = isDev
-    ? path.join(__dirname, '.venv', 'Scripts', 'python.exe')
-    : path.join(process.resourcesPath, 'venv', 'Scripts', 'python.exe');
+  const pythonExecutable = resolvePythonExecutable(isDev);
 
   console.log(`Starting backend server from: ${backendPath}`);
   console.log(`Using Python: ${pythonExecutable}`);
 
-  // Check if Python executable exists
-  if (!fs.existsSync(pythonExecutable)) {
-    console.error(`Python executable not found at: ${pythonExecutable}`);
-    // Fallback to system Python
-    const systemPython = spawn('python', ['--version'], { stdio: 'pipe' });
-    systemPython.on('error', () => {
-      console.error('System Python not found either!');
-    });
+  if (!isDev && !fs.existsSync(pythonExecutable) && path.isAbsolute(pythonExecutable)) {
+    console.error(`Bundled Python executable not found at: ${pythonExecutable}`);
   }
 
   backendProcess = spawn(pythonExecutable, ['-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', String(BACKEND_PORT)], {
@@ -108,10 +138,11 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: true
+      webSecurity: true,
+      sandbox: true
     },
     titleBarStyle: 'hidden',
-    title: 'Offline AI Chat',
+    title: 'Bloom AI Chat',
     show: true,
     icon: appIconPath
   });
@@ -130,7 +161,11 @@ function createWindow() {
 
   // Handle external links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (isAllowedExternalUrl(url)) {
+      shell.openExternal(url);
+    } else {
+      console.warn(`Blocked external URL: ${url}`);
+    }
     return { action: 'deny' };
   });
 

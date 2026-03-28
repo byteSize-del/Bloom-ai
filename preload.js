@@ -3,19 +3,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Expose protected methods that allow the renderer process to use
 // the IPC renderer without exposing the entire Node.js API
 
-// Backend control
-contextBridge.exposeInMainWorld('backendAPI', {
-  startBackend: async () => {
-    return await ipcRenderer.invoke('start-backend');
-  },
-  stopBackend: async () => {
-    return await ipcRenderer.invoke('stop-backend');
-  },
-  isBackendReady: async () => {
-    return await ipcRenderer.invoke('is-backend-ready');
-  }
-});
-
 // Chat API
 contextBridge.exposeInMainWorld('chatAPI', {
   sendMessage: async (message, model, history) => {

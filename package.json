@@ -11,6 +11,8 @@
     "build:win": "electron-builder --win --x64",
     "build:mac": "electron-builder --mac",
     "build:linux": "electron-builder --linux",
+    "test": "npm run test:backend",
+    "test:backend": ".venv\\Scripts\\python.exe -m pytest backend/tests -q",
     "installer": "node scripts/create-installer.js"
   },
   "devDependencies": {
@@ -30,8 +32,7 @@
       "preload.js",
       "backend/**/*",
       "frontend/**/*",
-      "package.json",
-      ".venv/**/*"
+      "package.json"
     ],
     "extraResources": [
       {
@@ -74,5 +75,9 @@
     "asarUnpack": [
       "backend/**/*"
     ]
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-free": "^7.2.0",
+    "marked": "^17.0.5"
   }
 }

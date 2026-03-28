@@ -4,9 +4,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';">
     <title>Bloom - Premium AI Chat</title>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="./vendor/fontawesome/css/all.min.css">
     <style>
         /* CSS Variables for Premium Dark Theme */
         :root {
@@ -59,7 +60,7 @@
         }
 
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'Segoe UI', 'Inter', 'SF Pro Text', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
             background:
                 radial-gradient(1200px 600px at -10% -20%, rgba(94, 106, 210, 0.18), transparent 60%),
                 radial-gradient(900px 500px at 110% -10%, rgba(57, 134, 197, 0.14), transparent 55%),
@@ -553,35 +554,91 @@
             border-top: 1px solid var(--glass-border);
         }
 
+        .model-select-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            display: block;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
         .model-select-wrapper {
             position: relative;
+            border-radius: 12px;
+            isolation: isolate;
+        }
+
+        .model-select-wrapper::before {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            border-radius: 13px;
+            background: linear-gradient(135deg, rgba(94, 106, 210, 0.55), rgba(64, 178, 225, 0.4));
+            opacity: 0;
+            transition: opacity 0.22s ease;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .model-select-wrapper::after {
+            content: '';
+            position: absolute;
+            right: 13px;
+            top: 50%;
+            width: 8px;
+            height: 8px;
+            border-right: 1.5px solid #9fa4b8;
+            border-bottom: 1.5px solid #9fa4b8;
+            transform: translateY(-65%) rotate(45deg);
+            pointer-events: none;
+            z-index: 2;
         }
 
         .model-select {
+            position: relative;
+            z-index: 1;
             width: 100%;
-            padding: 12px 36px 12px 14px;
-            background: var(--bg-tertiary);
+            padding: 12px 36px 12px 38px;
+            background:
+                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Crect x='3.5' y='3.5' width='13' height='13' rx='3' stroke='%23969CB3' stroke-width='1.3'/%3E%3Cpath d='M7 7h6M7 10h6M7 13h3' stroke='%23969CB3' stroke-width='1.3' stroke-linecap='round'/%3E%3C/svg%3E") left 11px center / 16px 16px no-repeat,
+                linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)),
+                var(--bg-tertiary);
             color: var(--text-primary);
             border: 1px solid var(--border-subtle);
-            border-radius: 10px;
+            border-radius: 12px;
             font-size: 13px;
             cursor: pointer;
             outline: none;
             appearance: none;
-            transition: all 0.2s;
-            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2398989d' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-            background-position: right 10px center;
-            background-repeat: no-repeat;
+            transition: all 0.22s ease;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
         }
 
         .model-select:hover {
             border-color: var(--accent-color);
             background-color: var(--bg-accent);
+            box-shadow: 0 6px 18px rgba(94, 106, 210, 0.16);
         }
 
         .model-select:focus {
             border-color: var(--accent-color);
-            box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.15);
+            box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.2), 0 8px 24px rgba(53, 124, 225, 0.2);
+        }
+
+        .model-select-wrapper:focus-within::before {
+            opacity: 1;
+        }
+
+        .model-select option {
+            background: #101217;
+            color: #f3f5fb;
+        }
+
+        [data-theme="light"] .model-select option {
+            background: #ffffff;
+            color: #1b1f26;
         }
 
         /* Main Content */
@@ -624,20 +681,54 @@
         }
 
         .current-model {
+            position: relative;
+            overflow: hidden;
             display: flex;
             align-items: center;
             gap: 8px;
             font-size: 13px;
             color: var(--text-secondary);
             padding: 6px 14px;
-            background: var(--bg-tertiary);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)), var(--bg-tertiary);
             border-radius: 20px;
             border: 1px solid var(--border-subtle);
             transition: all 0.2s;
         }
 
+        .current-model::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(120deg, rgba(94, 106, 210, 0.16), rgba(64, 178, 225, 0.12));
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+        }
+
         .current-model:hover {
             border-color: var(--accent-color);
+            box-shadow: 0 6px 16px rgba(94, 106, 210, 0.18);
+        }
+
+        .current-model:hover::after {
+            opacity: 1;
+        }
+
+        .current-model i,
+        .current-model span {
+            position: relative;
+            z-index: 1;
+        }
+
+        .current-model i {
+            color: #8ea4ff;
+        }
+
+        #current-model-display {
+            max-width: 240px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .settings-toggle {
@@ -1211,7 +1302,7 @@
             color: var(--text-primary);
             caret-color: var(--accent-hover);
             font-size: 15px;
-            font-family: 'Inter', sans-serif;
+            font-family: 'Segoe UI', 'Inter', sans-serif;
             resize: none;
             max-height: 200px;
             padding: 12px;
@@ -1586,8 +1677,7 @@
             </div>
 
             <div class="sidebar-footer">
-                <label class="model-select-label"
-                    style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; display: block; font-weight: 500;">
+                <label class="model-select-label">
                     <i class="fa-solid fa-microchip"></i> Model
                 </label>
                 <div class="model-select-wrapper">
@@ -1717,7 +1807,7 @@
         </main>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="./vendor/marked/marked.min.js"></script>
     <script src="renderer.js"></script>
 </body>
 

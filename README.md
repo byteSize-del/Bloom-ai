@@ -1,209 +1,86 @@
-# Bloom - Premium Offline AI Chat
+﻿# Bloom AI Chat
 
-A premium dark-themed desktop AI chat application that works offline with local Ollama models.
+Bloom is an Electron + FastAPI desktop chat app for local Ollama models (with optional cloud-capable model usage).
 
-![Bloom AI Chat](https://img.shields.io/badge/version-1.0.0-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+## Current Version
 
-## Features
+- App version: `1.0.1`
+- Windows installer artifact: `dist/Bloom-Setup-1.0.1.exe`
 
-- **Premium Dark UI** - Modern glassmorphism design with smooth animations
-- **Offline AI Chat** - Works entirely offline with local Ollama models
-- **Model Selection** - Choose from your installed Ollama models
-- **Chat Controls** - Stop generation mid-response, regenerate responses
-- **Message Actions** - Copy, delete, and regenerate individual messages
-- **Session Management** - Save and load chat history locally
-- **Customizable Settings** - Adjust temperature, system prompts, and themes
-- **Code Highlighting** - Syntax highlighting with copy button for code blocks
-- **Pro UI Elements** - Premium feature placeholders with hover tooltips
+## Highlights
 
-## Prerequisites
+- Desktop chat UI with session history
+- Local model picker (Ollama)
+- Streaming responses
+- Message actions (copy/regenerate/delete)
+- Custom window chrome and custom app icon
+- Developer Assistant and Agentic Cloud mode toggles
+- Offline frontend assets (no CDN dependency)
 
-Before installing Bloom, ensure you have:
+## Requirements
 
-1. **Python 3.10+** - [Download Python](https://www.python.org/downloads/)
-2. **Node.js 18+** - [Download Node.js](https://nodejs.org/)
-3. **Ollama** - [Download Ollama](https://ollama.ai/)
-   - Install at least one model: `ollama pull llama3`
+- Windows 10/11 x64
+- Ollama installed and running
+- Python virtual environment at `.venv` (for source/dev)
 
-## Installation
+## Run From Source
 
-### Option 1: Download Pre-built Installer (Recommended)
-
-Download the latest installer from [GitHub Releases](https://github.com/yourusername/bloom/releases):
-- **Windows**: `Bloom-Setup-1.0.0.exe`
-- **macOS**: `Bloom-Setup-1.0.0.dmg`
-- **Linux**: `Bloom-Setup-1.0.0.AppImage`
-
-### Option 2: Build from Source
-
-#### Quick Install (Automated)
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/bloom.git
-cd bloom
-
-# Run the automated installer
-# Windows:
-install.bat
-
-# macOS/Linux:
-chmod +x install.sh
-./install.sh
-```
-
-#### Manual Install
-
-```bash
-# 1. Clone
-git clone https://github.com/yourusername/bloom.git
-cd bloom
-
-# 2. Create Python virtual environment
-python -m venv .venv
-
-# 3. Install Python dependencies
-.venv\Scripts\pip.exe install -r backend\requirements.txt  # Windows
-source .venv/bin/activate && pip install -r backend/requirements.txt  # macOS/Linux
-
-# 4. Install Node dependencies
+```powershell
+cd "C:\Users\sayye\OneDrive\Desktop\Bloom"
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
 npm install
-
-# 5. Run the app
-start.bat  # Windows
-npm start  # macOS/Linux
-```
-
-## Project Structure
-
-```
-bloom/
-├── backend/
-│   ├── main.py              # FastAPI backend server
-│   ├── model_handler.py     # Ollama API integration
-│   ├── chat_history.py      # Session management
-│   └── requirements.txt     # Python dependencies
-├── frontend/
-│   ├── index.html           # Main UI with premium styling
-│   └── renderer.js          # Frontend logic & API calls
-├── main.js                  # Electron main process
-├── preload.js               # Electron preload script
-├── package.json             # Node dependencies
-├── start.bat                # Windows launcher
-└── README.md                # This file
-```
-
-## Usage
-
-### Starting a Chat
-1. Launch the application
-2. Select a model from the sidebar dropdown
-3. Type your message and press Enter or click Send
-4. Use Shift+Enter for new lines
-
-### Chat Controls
-- **Stop** - Click the Stop button during generation to halt the response
-- **Regenerate** - Click the Regenerate button on any AI message
-- **Copy** - Click Copy to copy message content to clipboard
-- **Delete** - Click the trash icon to remove a message
-
-### Settings
-- **Theme** - Toggle between Dark and Light mode
-- **Temperature** - Adjust response creativity (0.0 to 2.0)
-- **System Prompt** - Customize the AI's behavior
-- **Default Model** - Set your preferred model
-
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Enter` | Send message |
-| `Shift + Enter` | New line |
-| `Ctrl + A` | Select all |
-| `Ctrl + C` | Copy selected text |
-| `Ctrl + V` | Paste |
-
-## Configuration
-
-### Ollama Models
-
-Bloom automatically detects models from:
-- Ollama API (running on port 11434)
-- Local models folder: `~/.ollama/models`
-
-To install new models:
-```bash
-ollama pull llama3
-ollama pull mistral
-ollama pull codellama
-```
-
-### Custom Settings
-
-Settings are stored locally and persist between sessions.
-
-## Troubleshooting
-
-### Backend Won't Start
-1. Ensure Ollama is running: `ollama serve`
-2. Check if port 8000 is available
-3. Verify Python dependencies: `pip install -r backend/requirements.txt`
-
-### No Models Found
-1. Install Ollama: https://ollama.ai
-2. Pull a model: `ollama pull llama3`
-3. Restart the application
-
-### UI Not Loading
-1. Clear browser cache (if running in browser)
-2. Reinstall Node modules: `npm install`
-
-## Development
-
-### Running in Development Mode
-
-```bash
-# Terminal 1 - Backend
-.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
-
-# Terminal 2 - Frontend
 npm start
 ```
 
-### Building for Production
+## Build Installer
 
-```bash
-npm run build
+```powershell
+npm run build:win
 ```
 
-## Technologies Used
+Output:
 
-- **Frontend:** HTML5, CSS3, JavaScript
-- **Backend:** Python, FastAPI, Uvicorn
-- **Desktop:** Electron
-- **AI:** Ollama API
-- **Styling:** Custom CSS with glassmorphism effects
-- **Icons:** Font Awesome
+- `dist\Bloom-Setup-1.0.1.exe`
+
+## Quick Backend Checks
+
+```powershell
+ollama serve
+curl http://localhost:11434/api/tags
+curl http://127.0.0.1:8000/health
+```
+
+## Tests
+
+Install test dependency once:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements-dev.txt
+```
+
+Run tests:
+
+```powershell
+npm test
+```
+
+## Project Layout
+
+- `main.js` Electron main process
+- `preload.js` secure preload bridge
+- `frontend/index.html` UI + styles
+- `frontend/renderer.js` chat/session logic
+- `backend/main.py` FastAPI API
+- `backend/model_handler.py` Ollama integration
+- `backend/chat_history.py` persistence manager
+- `backend/tests/` backend test suite
+
+## Notes
+
+- Packaged app uses bundled Python from `resources/venv`.
+- Session files are stored in app data folder via `DATA_DIR`.
+- Settings are stored next to the session folder (for packaged app: `%APPDATA%\\OfflineAIChat\\settings.json`).
 
 ## License
 
-MIT License - See [LICENSE](LICENSE) for details.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## Support
-
-If you have any questions or issues, please open an issue on GitHub.
-
----
-
-Made with ❤️ by byteSize-del
+MIT (see `LICENSE`)

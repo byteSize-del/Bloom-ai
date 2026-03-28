@@ -5,10 +5,11 @@ Main application entry point
 
 import os
 import json
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import asyncio
 
@@ -18,18 +19,38 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from model_handler import OllamaHandler
 from chat_history import ChatHistoryManager
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup/shutdown lifecycle handler."""
+    data_dir = os.environ.get("DATA_DIR", os.path.join(os.path.expanduser("~"), ".offline-ai-chat", "sessions"))
+    os.makedirs(data_dir, exist_ok=True)
+    print(f"Backend initialized. Data directory: {data_dir}")
+    yield
+
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Offline AI Chat API",
-    description="Backend API for offline AI desktop chat application"
+    description="Backend API for offline AI desktop chat application",
+    lifespan=lifespan
 )
+
+# CORS is restricted to desktop/local contexts.
+allowed_origins = [
+    origin.strip()
+    for origin in os.environ.get(
+        "ALLOWED_ORIGINS",
+        "null,http://127.0.0.1,http://localhost"
+    ).split(",")
+    if origin.strip()
+]
 
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=allowed_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -47,7 +68,7 @@ class Message(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     model: str
-    history: List[Dict[str, str]] = []
+    history: List[Dict[str, str]] = Field(default_factory=list)
     temperature: Optional[float] = 0.7
     system_prompt: Optional[str] = ""
 
@@ -55,7 +76,16 @@ class ChatRequest(BaseModel):
 class SessionRequest(BaseModel):
     title: Optional[str] = None
     model: str
-    messages: List[Dict[str, str]] = []
+    messages: List[Dict[str, str]] = Field(default_factory=list)
+
+
+class SettingsRequest(BaseModel):
+    theme: str = "dark"
+    systemPrompt: str = "You are a helpful AI assistant. Provide clear, concise responses."
+    temperature: float = 0.7
+    defaultModel: str = "llama3"
+    developerMode: bool = True
+    agenticCloudMode: bool = True
 
 def normalize_chat_role(role: str) -> str:
     normalized = str(role or "").strip().lower()
@@ -194,6 +224,25 @@ async def delete_session(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.put("/history/{session_id}")
+async def update_session(session_id: str, session: SessionRequest):
+    """Update an existing chat session in place."""
+    try:
+        session_dict = {
+            "title": session.title,
+            "model": session.model,
+            "messages": session.messages
+        }
+        updated = await chat_history_manager.update_session(session_id, session_dict)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return {"success": True, "sessionId": session_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Generate title from messages
 @app.post("/history/generate-title")
 async def generate_title(messages: List[Dict[str, str]]):
@@ -217,21 +266,13 @@ async def get_settings():
 
 
 @app.post("/settings")
-async def update_settings(settings: Dict[str, Any]):
+async def update_settings(settings: SettingsRequest):
     """Update settings."""
     try:
-        chat_history_manager.save_settings(settings)
+        chat_history_manager.save_settings(settings.model_dump())
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Startup hook to initialize the app."""
-    data_dir = os.environ.get("DATA_DIR", os.path.join(os.path.expanduser("~"), ".offline-ai-chat", "sessions"))
-    os.makedirs(data_dir, exist_ok=True)
-    print(f"Backend initialized. Data directory: {data_dir}")
 
 
 if __name__ == "__main__":
