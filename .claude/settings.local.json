@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(claude-api)",
+      "Bash(python -m py_compile task_manager.py)",
+      "Bash(python -m py_compile sub_agent.py)",
+      "Bash(python -m py_compile main.py)",
+      "Bash(python -c \"from task_manager import TaskManager, Task, TaskStatus, TaskPriority, TaskStep, SharedContext; print\\(''task_manager imports OK''\\)\")",
+      "Bash(python -c \"from sub_agent import SubAgent, SubAgentRunner, SubAgentRole; print\\(''sub_agent imports OK''\\)\")",
+      "Bash(python -c \"from task_manager import TaskManager, Task, TaskStatus, TaskPriority, TaskStep; print\\(''task_manager OK - TaskStep values:'', [s.value for s in TaskStep]\\)\")",
+      "Bash(python -c \"from sub_agent import SubAgentRunner, SubAgentRole; print\\(''sub_agent OK - SubAgentRole values:'', [r.value for r in SubAgentRole]\\)\")",
+      "Bash(find /c/Users/sayye/OneDrive/Desktop/Bloom/frontend -type f \\\\\\(-name *.js -o -name *.html -o -name *.css \\\\\\))",
+      "Bash(python -m py_compile parallel_executor.py)",
+      "Bash(python -m py_compile task_api.py)",
+      "Bash(python:*)",
+      "Bash(pip show:*)"
+    ]
+  }
+}

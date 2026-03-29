@@ -3297,5 +3297,265 @@ const chatObserver = new MutationObserver(() => {
 chatObserver.observe(messageContainer, { childList: true, subtree: false });
 
 
+// ─── Task Panel ────────────────────────────────────────────────────────────────
+
+let taskWs = null;
+let taskFilter = 'all';
+let selectedTaskId = null;
+
+const taskPanel = document.getElementById('task-panel');
+const taskToggle = document.getElementById('task-toggle');
+const taskPanelCloseBtn = document.getElementById('task-panel-close-btn');
+const taskGoalInput = document.getElementById('task-goal-input');
+const taskRoleSelect = document.getElementById('task-role-select');
+const taskSpawnBtn = document.getElementById('task-spawn-btn');
+const taskList = document.getElementById('task-list');
+const taskEmptyState = document.getElementById('task-empty-state');
+const taskDetailPane = document.getElementById('task-detail-pane');
+const taskDetailTitle = document.getElementById('task-detail-title');
+const taskDetailMeta = document.getElementById('task-detail-meta');
+const taskProgressBar = document.getElementById('task-progress-bar');
+const taskLogViewer = document.getElementById('task-log-viewer');
+const taskCancelBtn = document.getElementById('task-cancel-btn');
+const taskPauseBtn = document.getElementById('task-pause-btn');
+const taskResumeBtn = document.getElementById('task-resume-btn');
+const taskDetailCloseBtn = document.getElementById('task-detail-close-btn');
+
+function initTaskPanel() {
+    if (!taskToggle) return;
+    taskToggle.addEventListener('click', toggleTaskPanel);
+    taskPanelCloseBtn?.addEventListener('click', closeTaskPanel);
+    taskSpawnBtn?.addEventListener('click', spawnTaskFromForm);
+    taskGoalInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') spawnTaskFromForm();
+    });
+    taskCancelBtn?.addEventListener('click', () => performTaskAction(selectedTaskId, 'cancel'));
+    taskPauseBtn?.addEventListener('click', () => performTaskAction(selectedTaskId, 'pause'));
+    taskResumeBtn?.addEventListener('click', () => performTaskAction(selectedTaskId, 'resume'));
+    taskDetailCloseBtn?.addEventListener('click', closeTaskDetail);
+
+    document.querySelectorAll('.task-filter-tab').forEach((tab) => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.task-filter-tab').forEach((t) => t.classList.remove('active'));
+            tab.classList.add('active');
+            taskFilter = tab.dataset.filter;
+            refreshTaskList();
+        });
+    });
+
+    connectTaskWebSocket();
+    loadInitialTasks();
+}
+
+function toggleTaskPanel() {
+    if (!taskPanel) return;
+    const isHidden = taskPanel.hidden;
+    taskPanel.hidden = !isHidden;
+    taskToggle?.classList.toggle('active', isHidden);
+    if (isHidden) refreshTaskList();
+}
+
+function closeTaskPanel() {
+    if (!taskPanel) return;
+    taskPanel.hidden = true;
+    taskToggle?.classList.remove('active');
+}
+
+async function spawnTaskFromForm() {
+    const goal = taskGoalInput?.value.trim();
+    if (!goal) return;
+    const role = taskRoleSelect?.value || 'file';
+    try {
+        const res = await fetch(apiUrl('/tasks/spawn'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ goal, role, model: currentModel || 'llama3', temperature: 0.7, max_steps: 5 })
+        });
+        const data = await res.json();
+        if (data.success) {
+            taskGoalInput.value = '';
+            await refreshTaskList();
+        }
+    } catch (err) {
+        console.error('Spawn task failed:', err);
+    }
+}
+
+async function loadInitialTasks() {
+    await refreshTaskList();
+}
+
+async function refreshTaskList() {
+    try {
+        const res = await fetch(apiUrl('/tasks'));
+        const data = await res.json();
+        renderTaskList(data.tasks || []);
+    } catch (err) {
+        console.error('Failed to load tasks:', err);
+    }
+}
+
+function renderTaskList(tasks) {
+    if (!taskList) return;
+    const filtered = tasks.filter((t) => {
+        if (taskFilter === 'all') return true;
+        if (taskFilter === 'active') return ['pending', 'running', 'paused'].includes(t.status);
+        return t.status === taskFilter;
+    });
+
+    if (filtered.length === 0) {
+        taskList.innerHTML = '';
+        taskList.appendChild(taskEmptyState || createEmptyState());
+        return;
+    }
+
+    taskList.innerHTML = '';
+    filtered.forEach((task) => {
+        const el = createTaskItem(task);
+        taskList.appendChild(el);
+    });
+}
+
+function createEmptyState() {
+    const div = document.createElement('div');
+    div.className = 'task-empty-state';
+    div.id = 'task-empty-state';
+    div.innerHTML = '<i class="fa-solid fa-folder-open"></i><p>No tasks yet. Spawn one above.</p>';
+    return div;
+}
+
+function createTaskItem(task) {
+    const div = document.createElement('div');
+    div.className = `task-item${task.id === selectedTaskId ? ' selected' : ''}`;
+    div.dataset.taskId = task.id;
+
+    const iconMap = {
+        planner: 'fa-solid fa-lg fa-compass',
+        file: 'fa-solid fa-lg fa-file-lines',
+        search: 'fa-solid fa-lg fa-magnifying-glass',
+        shell: 'fa-solid fa-lg fa-terminal',
+        test: 'fa-solid fa-lg fa-flask',
+        review: 'fa-solid fa-lg fa-clipboard-check',
+    };
+    const icon = iconMap[task.role] || 'fa-solid fa-lg fa-cube';
+
+    div.innerHTML = `
+        <div class="task-item-icon ${task.role}">
+            <i class="${icon}"></i>
+        </div>
+        <div class="task-item-info">
+            <div class="task-item-title">${escHtml(task.title)}</div>
+            <div class="task-item-meta">${escHtml(task.role)} &bull; ${formatRelTime(task.created_at)}</div>
+        </div>
+        <span class="task-status-badge ${task.status}">${task.status}</span>
+    `;
+
+    div.addEventListener('click', () => openTaskDetail(task.id));
+    return div;
+}
+
+async function openTaskDetail(taskId) {
+    selectedTaskId = taskId;
+    try {
+        const res = await fetch(apiUrl(`/tasks/${taskId}`));
+        const data = await res.json();
+        const task = data.task;
+        if (!task) return;
+
+        taskDetailTitle.textContent = task.title;
+        taskDetailMeta.textContent = `${task.role} &bull; ${task.status} &bull; ${formatRelTime(task.created_at)}`;
+
+        const progress = Math.round((task.progress || 0) * 100);
+        taskProgressBar.style.setProperty('--progress', `${progress}%`);
+
+        taskLogViewer.textContent = (task.output_logs || []).join('\n') || 'No output yet.';
+
+        taskCancelBtn.hidden = ['done', 'failed', 'cancelled'].includes(task.status);
+        taskPauseBtn.hidden = task.status !== 'running';
+        taskResumeBtn.hidden = task.status !== 'paused';
+
+        taskDetailPane.hidden = false;
+
+        document.querySelectorAll('.task-item').forEach((el) => {
+            el.classList.toggle('selected', el.dataset.taskId === taskId);
+        });
+    } catch (err) {
+        console.error('Failed to load task detail:', err);
+    }
+}
+
+function closeTaskDetail() {
+    selectedTaskId = null;
+    taskDetailPane.hidden = true;
+}
+
+async function performTaskAction(taskId, action) {
+    try {
+        await fetch(apiUrl(`/tasks/${taskId}/${action}`), { method: 'POST' });
+        await refreshTaskList();
+        if (selectedTaskId === taskId) await openTaskDetail(taskId);
+    } catch (err) {
+        console.error(`Task ${action} failed:`, err);
+    }
+}
+
+function connectTaskWebSocket() {
+    if (taskWs) {
+        taskWs.close();
+    }
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${proto}//127.0.0.1:8000/tasks/ws`;
+
+    try {
+        taskWs = new WebSocket(wsUrl);
+
+        taskWs.onmessage = (event) => {
+            try {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'task_status' || msg.type === 'task_output' || msg.type === 'task_progress' || msg.type === 'task_error' || msg.type === 'task_done') {
+                    refreshTaskList();
+                    if (selectedTaskId === msg.task_id) {
+                        openTaskDetail(selectedTaskId);
+                    }
+                }
+            } catch (_) {}
+        };
+
+        taskWs.onclose = () => {
+            setTimeout(connectTaskWebSocket, 3000);
+        };
+
+        taskWs.onerror = () => {
+            taskWs.close();
+        };
+    } catch (_) {
+        setTimeout(connectTaskWebSocket, 5000);
+    }
+}
+
+function escHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str || '';
+    return div.innerHTML;
+}
+
+function formatRelTime(isoString) {
+    if (!isoString) return '';
+    try {
+        const date = new Date(isoString);
+        const now = new Date();
+        const diff = Math.floor((now - date) / 1000);
+        if (diff < 60) return 'just now';
+        if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+        if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+        return `${Math.floor(diff / 86400)}d ago`;
+    } catch (_) {
+        return '';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', initTaskPanel);
+
+
 
 

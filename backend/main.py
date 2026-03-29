@@ -18,18 +18,49 @@ from agent_loop import AgentLoopController
 from chat_history import ChatHistoryManager
 from mcp_manager import MCPManager
 from model_handler import OllamaHandler
+from sub_agent import SubAgentRole, SubAgentRunner
+from task_api import router as task_router, fw_router
+from task_manager import TaskManager, TaskStep
 from tool_executor import SafeToolExecutor
 
 TOOL_LOOP_LIMIT = 4
 TEXT_CHUNK_SIZE = 180
 
+task_manager_singleton = TaskManager.get_instance()
+sub_agent_runner_singleton = SubAgentRunner.get_instance()
+
+_spawn_pattern_compiled = False
+SPAWN_PATTERN = None
+
+
+def _get_spawn_pattern():
+    global SPAWN_PATTERN, _spawn_pattern_compiled
+    if SPAWN_PATTERN is None:
+        import re
+        SPAWN_PATTERN = re.compile(
+            r"^spawn:\s*(.+?)(?:\s*\|\s*(.+?))*(?:\s*\|\s*(.+?))*$",
+            re.IGNORECASE | re.DOTALL,
+        )
+        _spawn_pattern_compiled = True
+    return SPAWN_PATTERN
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from task_api import set_mcp_manager, set_file_watcher
+    from file_watcher import FileWatcher
+
     data_dir = os.environ.get("DATA_DIR", os.path.join(os.path.expanduser("~"), ".offline-ai-chat", "sessions"))
     os.makedirs(data_dir, exist_ok=True)
     print(f"Backend initialized. Data directory: {data_dir}")
     app.state.mcp_manager = mcp_manager
+    app.state.task_manager = task_manager
+
+    file_watcher = FileWatcher.get_instance()
+    set_mcp_manager(mcp_manager)
+    set_file_watcher(file_watcher)
+    app.state.file_watcher = file_watcher
+
     try:
         settings = chat_history_manager.load_settings()
         await mcp_manager.refresh_all(settings)
@@ -42,6 +73,14 @@ async def lifespan(app: FastAPI):
             await mcp_manager.shutdown()
         except Exception as exc:
             print(f"MCP shutdown failed: {exc}")
+        try:
+            await task_manager.shutdown()
+        except Exception as exc:
+            print(f"Task manager shutdown failed: {exc}")
+        try:
+            await file_watcher.shutdown()
+        except Exception as exc:
+            print(f"File watcher shutdown failed: {exc}")
 
 
 app = FastAPI(
@@ -49,6 +88,9 @@ app = FastAPI(
     description="Backend API for offline AI desktop chat application",
     lifespan=lifespan,
 )
+
+app.include_router(task_router)
+app.include_router(fw_router)
 
 allowed_origins = [
     origin.strip()
@@ -69,6 +111,7 @@ chat_history_manager = ChatHistoryManager()
 tool_executor = SafeToolExecutor()
 mcp_manager = MCPManager()
 agent_loop_controller = AgentLoopController(ollama_handler, mcp_manager=mcp_manager)
+task_manager = TaskManager.get_instance()
 
 
 class Message(BaseModel):
@@ -123,6 +166,45 @@ class AgentProposalDecisionRequest(BaseModel):
     decision: str
     rememberForSession: bool = False
     editedParams: Optional[Dict[str, Any]] = None
+
+
+def _try_spawn_tasks(message: str, model: str, temperature: float) -> Optional[StreamingResponse]:
+    text = str(message or "").strip()
+    match = _get_spawn_pattern().match(text)
+    if not match:
+        return None
+    parts = [g.strip() for g in match.groups() if g and g.strip()]
+    if not parts:
+        return None
+
+    spawned = []
+
+    async def generate():
+        for i, goal in enumerate(parts):
+            role = SubAgentRole.PLANNER if i == 0 else SubAgentRole.FILE
+            try:
+                task = await task_manager_singleton.submit(
+                    title=goal[:80],
+                    description=goal,
+                    role=TaskStep(role.value),
+                    model=model,
+                    temperature=temperature,
+                )
+                await sub_agent_runner_singleton.spawn(
+                    goal=goal,
+                    role=role,
+                    model=model,
+                    temperature=temperature,
+                    task_id=task.id,
+                )
+                spawned.append(goal[:60])
+                yield f"data: {json.dumps({'type': 'content', 'content': f'[Task {i + 1}] Spawned: {goal[:60]}'})}\n\n"
+            except Exception as exc:
+                yield f"data: {json.dumps({'type': 'content', 'content': f'[Task {i + 1}] Failed to spawn: {exc}'})}\n\n"
+        yield f"data: {json.dumps({'type': 'content', 'content': f'Done. {len(spawned)} task(s) created.'})}\n\n"
+        yield f"data: {json.dumps({'done': True})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 def normalize_chat_role(role: str) -> str:
@@ -205,6 +287,9 @@ async def get_models():
 
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
+    spawn_response = _try_spawn_tasks(request.message, request.model, request.temperature or 0.7)
+    if spawn_response:
+        return spawn_response
     try:
         async def generate_response():
             try:
