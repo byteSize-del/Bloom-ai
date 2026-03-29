@@ -7,6 +7,9 @@ const http = require('http');
 
 let mainWindow;
 let backendProcess;
+let ollamaProcessPid = null;
+let ollamaStartedByBloom = false;
+let ollamaShutdownAttempted = false;
 const BACKEND_PORT = 8000;
 const BACKEND_URL = `http://127.0.0.1:${BACKEND_PORT}`;
 const OLLAMA_PORT = 11434;
@@ -277,11 +280,51 @@ function startOllamaInBackground(ollamaExecutable) {
       stdio: 'ignore',
       windowsHide: true
     });
+    ollamaProcessPid = Number(child.pid) || null;
+    ollamaStartedByBloom = true;
     child.unref();
     return true;
   } catch (error) {
     console.error('Failed to start Ollama in background:', error);
+    ollamaProcessPid = null;
+    ollamaStartedByBloom = false;
     return false;
+  }
+}
+
+function stopOllamaStartedByBloom() {
+  if (!ollamaStartedByBloom || ollamaShutdownAttempted) {
+    return;
+  }
+  ollamaShutdownAttempted = true;
+
+  const pid = Number(ollamaProcessPid || 0);
+  if (!pid) {
+    console.warn('Bloom started Ollama, but no PID was captured for shutdown.');
+    return;
+  }
+
+  try {
+    if (process.platform === 'win32') {
+      const stopResult = spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], {
+        windowsHide: true,
+        encoding: 'utf8'
+      });
+      if (stopResult.status !== 0) {
+        const errorText = (stopResult.stderr || stopResult.stdout || '').trim();
+        console.warn(`Failed to stop Ollama PID ${pid}: ${errorText || 'unknown taskkill error'}`);
+      } else {
+        console.log(`Stopped Ollama process started by Bloom (PID ${pid}).`);
+      }
+    } else {
+      process.kill(pid, 'SIGTERM');
+      console.log(`Stopped Ollama process started by Bloom (PID ${pid}).`);
+    }
+  } catch (error) {
+    console.warn(`Error while stopping Ollama PID ${pid}:`, error.message);
+  } finally {
+    ollamaProcessPid = null;
+    ollamaStartedByBloom = false;
   }
 }
 
@@ -312,6 +355,8 @@ async function promptInstallOllama() {
 
 async function ensureOllamaRunningInBackground() {
   if (await isOllamaResponsive()) {
+    ollamaStartedByBloom = false;
+    ollamaProcessPid = null;
     return true;
   }
 
@@ -549,6 +594,7 @@ app.on('window-all-closed', () => {
     if (backendProcess && !backendProcess.killed) {
       backendProcess.kill('SIGTERM');
     }
+    stopOllamaStartedByBloom();
     app.quit();
   }
 });
@@ -571,6 +617,7 @@ app.on('before-quit', () => {
     console.log('Stopping backend server...');
     backendProcess.kill('SIGTERM');
   }
+  stopOllamaStartedByBloom();
 });
 
 // IPC Handlers for communication between main and renderer

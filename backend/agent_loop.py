@@ -18,7 +18,6 @@ from agent_tools import (
     is_safe,
     model_observation_from_result,
     preview_result,
-    registry_json,
     risk_badge,
     summarize_tool_request,
     user_facing_tool_summary,
@@ -107,8 +106,9 @@ class AgentAuditLogger:
 
 
 class AgentLoopController:
-    def __init__(self, ollama_handler) -> None:
+    def __init__(self, ollama_handler, mcp_manager=None) -> None:
         self.ollama_handler = ollama_handler
+        self.mcp_manager = mcp_manager
         self.pending_proposals: Dict[str, PendingProposal] = {}
         self.audit_logger = AgentAuditLogger()
 
@@ -117,6 +117,14 @@ class AgentLoopController:
         return str(self.audit_logger.audit_path)
 
     def build_system_prompt(self, base_prompt: str = "") -> str:
+        mcp_tools = []
+        if self.mcp_manager:
+            try:
+                mcp_tools = self.mcp_manager.get_all_tools()
+            except Exception:
+                mcp_tools = []
+        merged_tool_registry = list(AGENT_TOOLS.values()) + list(mcp_tools)
+
         agent_prompt = (
             "You are an AI agent with access to the following tools. When you need to perform a system action, "
             "respond ONLY with a JSON tool call in this exact format:\n\n"
@@ -127,7 +135,7 @@ class AgentLoopController:
             "After receiving a tool result or a denial observation, continue reasoning until you can give the user a complete final answer. "
             "Default to English unless the user explicitly asks for another response language. "
             "If the user message contains quoted or pasted text in another language, treat that as reference material, not as a language switch request.\n\n"
-            f"Available tools:\n{registry_json()}"
+            f"Available tools:\n{json.dumps(merged_tool_registry, indent=2, ensure_ascii=False)}"
         )
         base = str(base_prompt or "").strip()
         return f"{base}\n\n{agent_prompt}".strip() if base else agent_prompt
@@ -200,11 +208,14 @@ class AgentLoopController:
         params: Dict[str, Any],
         reason: str,
         strict_mode: bool,
+        tool_meta: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         request_id = uuid.uuid4().hex
-        tool_meta = AGENT_TOOLS.get(tool_name, {})
+        resolved_tool_meta = tool_meta or AGENT_TOOLS.get(tool_name, {})
         permission_tier = max(1, effective_permission_tier(tool_name, params))
-        risk = risk_badge(tool_meta.get("risk", "medium"))
+        if str(tool_name or "").startswith("mcp:"):
+            permission_tier = max(1, int(resolved_tool_meta.get("permission_tier", 2) or 2))
+        risk = risk_badge(resolved_tool_meta.get("risk", "medium"))
         proposal = PendingProposal(
             request_id=request_id,
             session_id=session_id,
@@ -231,6 +242,43 @@ class AgentLoopController:
             "params": proposal.params,
             "expiresAt": proposal.expires_at.isoformat(),
         }
+
+    def _resolve_tool_meta(self, tool_name: str) -> Optional[Dict[str, Any]]:
+        if tool_name in AGENT_TOOLS:
+            return AGENT_TOOLS.get(tool_name)
+        if self.mcp_manager:
+            try:
+                return self.mcp_manager.get_tool_metadata(tool_name)
+            except Exception:
+                return None
+        return None
+
+    def _effective_permission_tier(
+        self,
+        tool_name: str,
+        params: Dict[str, Any],
+        tool_meta: Optional[Dict[str, Any]],
+    ) -> int:
+        if str(tool_name or "").startswith("mcp:"):
+            return max(1, int((tool_meta or {}).get("permission_tier", 2) or 2))
+        return effective_permission_tier(tool_name, params)
+
+    def _is_tool_safe(self, tool_name: str, params: Dict[str, Any]) -> tuple[bool, str]:
+        if str(tool_name or "").startswith("mcp:"):
+            if not self.mcp_manager:
+                return False, "This action was blocked because MCP is not available in this session."
+            try:
+                return self.mcp_manager.is_safe_tool_call(tool_name, params)
+            except Exception as exc:
+                return False, f"This action was blocked during MCP safety validation: {exc}"
+        return is_safe(tool_name, params)
+
+    async def _execute_or_proxy(self, tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        if tool_name in AGENT_TOOLS:
+            return execute_tool(tool_name, params)
+        if str(tool_name or "").startswith("mcp:") and self.mcp_manager:
+            return await self.mcp_manager.call_tool_by_full_name(tool_name, params)
+        raise PermissionError(f"Tool '{tool_name}' was not found in native or MCP registries.")
 
     async def wait_for_decision(self, request_id: str) -> PendingProposal:
         proposal = self.pending_proposals[request_id]
@@ -338,7 +386,7 @@ class AgentLoopController:
             tool_name = str(tool_call.get("tool", "")).strip()
             params = dict(tool_call.get("params") or {})
             reason = str(tool_call.get("reason", "")).strip() or summarize_tool_request(tool_name, params)
-            tool_meta = AGENT_TOOLS.get(tool_name)
+            tool_meta = self._resolve_tool_meta(tool_name)
 
             messages.append({"role": "assistant", "content": response_text})
 
@@ -372,7 +420,7 @@ class AgentLoopController:
                 )
                 continue
 
-            safe, reason_if_blocked = is_safe(tool_name, params)
+            safe, reason_if_blocked = self._is_tool_safe(tool_name, params)
             if not safe:
                 yield {"type": "safety_block", "tool": tool_name, "content": reason_if_blocked}
                 messages.append({"role": "system", "content": reason_if_blocked})
@@ -387,7 +435,7 @@ class AgentLoopController:
                 )
                 continue
 
-            permission_tier = effective_permission_tier(tool_name, params)
+            permission_tier = self._effective_permission_tier(tool_name, params, tool_meta)
             requires_approval = strict_mode or permission_tier > 1 or bool(tool_meta.get("requires_user_approval"))
 
             if requires_approval:
@@ -397,6 +445,7 @@ class AgentLoopController:
                     params=params,
                     reason=reason,
                     strict_mode=strict_mode,
+                    tool_meta=tool_meta,
                 )
                 yield {"type": "tool_proposal", "proposal": proposal_payload}
                 proposal = await self.wait_for_decision(proposal_payload["requestId"])
@@ -429,7 +478,7 @@ class AgentLoopController:
 
                 try:
                     yield {"type": "thinking", "content": f"Bloom is executing {proposal.tool_name.replace('_', ' ')}."}
-                    result = execute_tool(tool_name, final_params)
+                    result = await self._execute_or_proxy(tool_name, final_params)
                     last_tool_summary = user_facing_tool_summary(result)
                     self.audit_logger.log(
                         session_id=session_key,
@@ -472,7 +521,7 @@ class AgentLoopController:
 
             try:
                 yield {"type": "thinking", "content": f"Bloom is auto-approving a safe {tool_name.replace('_', ' ')} action."}
-                result = execute_tool(tool_name, params)
+                result = await self._execute_or_proxy(tool_name, params)
                 last_tool_summary = user_facing_tool_summary(result)
                 self.audit_logger.log(
                     session_id=session_key,

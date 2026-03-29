@@ -72,11 +72,20 @@ const statusRuntimePill = document.getElementById('status-runtime-pill');
 const statusHardwarePill = document.getElementById('status-hardware-pill');
 const openModelsPathBtn = document.getElementById('open-models-path-btn');
 const openSessionsPathBtn = document.getElementById('open-sessions-path-btn');
+const mcpStatusBar = document.getElementById('mcp-status-bar');
 const mcpList = document.getElementById('mcp-list');
+const mcpPresetSelect = document.getElementById('mcp-preset-select');
+const applyMcpPresetBtn = document.getElementById('apply-mcp-preset-btn');
 const mcpNameInput = document.getElementById('mcp-name-input');
+const mcpTransportSelect = document.getElementById('mcp-transport-select');
+const mcpCommandInput = document.getElementById('mcp-command-input');
+const mcpArgsInput = document.getElementById('mcp-args-input');
 const mcpUrlInput = document.getElementById('mcp-url-input');
+const mcpEnvInput = document.getElementById('mcp-env-input');
 const mcpDescriptionInput = document.getElementById('mcp-description-input');
+const mcpAutoConnectToggle = document.getElementById('mcp-autoconnect-toggle');
 const addMcpBtn = document.getElementById('add-mcp-btn');
+const refreshMcpBtn = document.getElementById('refresh-mcp-btn');
 const agentModeBadge = document.getElementById('agent-mode-badge');
 const agentCommandStrip = document.getElementById('agent-command-strip');
 const agentModeToggle = document.getElementById('agent-mode-toggle');
@@ -127,6 +136,7 @@ let runtimeStatusTimer = null;
 let generationStartedAt = null;
 let generationCharCount = 0;
 const activeProposalCards = new Map();
+let mcpRuntimeStatus = [];
 
 class PermissionManager {
     constructor() {
@@ -286,18 +296,146 @@ function normalizeMcpServers(servers) {
     return servers
         .map((server, index) => {
             const name = String(server?.name || `MCP ${index + 1}`).trim();
+            const rawTransport = String(server?.transport || '').trim().toLowerCase();
+            const command = String(server?.command || '').trim();
+            const args = Array.isArray(server?.args)
+                ? server.args.map((item) => String(item))
+                : String(server?.args || '').trim().split(/\s+/).filter(Boolean);
             const url = String(server?.url || '').trim();
+            const transport = rawTransport
+                ? (rawTransport === 'sse' ? 'sse' : 'stdio')
+                : (url.toLowerCase().startsWith('http') ? 'sse' : 'stdio');
+            const env = typeof server?.env === 'object' && server?.env !== null ? server.env : {};
             const description = String(server?.description || '').trim();
-            if (!name || !url) return null;
+            if (!name) return null;
+            if (transport === 'stdio' && !command) return null;
+            if (transport === 'sse' && !url) return null;
             return {
                 id: String(server?.id || `${Date.now()}-${index}`),
                 name,
+                transport,
+                command,
+                args,
                 url,
+                env: Object.fromEntries(
+                    Object.entries(env).map(([key, value]) => [String(key), String(value)])
+                ),
                 description,
-                enabled: server?.enabled !== false
+                enabled: server?.enabled !== false,
+                autoConnect: server?.autoConnect !== false
             };
         })
         .filter(Boolean);
+}
+
+function parseArgsInput(argsText) {
+    return String(argsText || '')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+}
+
+function formatArgsInput(args) {
+    if (!Array.isArray(args)) return '';
+    return args.map((item) => String(item)).join(' ');
+}
+
+function parseEnvInput(rawText) {
+    const result = {};
+    String(rawText || '')
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .forEach((line) => {
+            const eq = line.indexOf('=');
+            if (eq <= 0) return;
+            const key = line.slice(0, eq).trim();
+            const value = line.slice(eq + 1).trim();
+            if (key) result[key] = value;
+        });
+    return result;
+}
+
+function formatEnvInput(envObj) {
+    if (!envObj || typeof envObj !== 'object') return '';
+    return Object.entries(envObj)
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n');
+}
+
+function inferHomePathForPresets() {
+    const modelsPath = String(usageSummary?.modelsPath || '').trim();
+    const marker = '\\.ollama\\models';
+    const markerIndex = modelsPath.toLowerCase().indexOf(marker.toLowerCase());
+    if (markerIndex > 0) {
+        return modelsPath.slice(0, markerIndex);
+    }
+    return 'C:\\Users\\<user>';
+}
+
+function getMcpPresetConfig(presetKey) {
+    const homePath = inferHomePathForPresets();
+    const documentsPath = `${homePath}\\Documents`;
+    const presets = {
+        filesystem: {
+            name: 'filesystem',
+            transport: 'stdio',
+            command: 'npx',
+            args: ['-y', '@modelcontextprotocol/server-filesystem', documentsPath],
+            description: 'Local filesystem access scoped to your Documents folder.',
+            env: {}
+        },
+        github: {
+            name: 'github',
+            transport: 'stdio',
+            command: 'npx',
+            args: ['-y', '@modelcontextprotocol/server-github'],
+            description: 'GitHub tools for repositories, issues, and pull requests.',
+            env: { GITHUB_TOKEN: '' }
+        },
+        git: {
+            name: 'git',
+            transport: 'stdio',
+            command: 'npx',
+            args: ['-y', '@modelcontextprotocol/server-git'],
+            description: 'Local git tools for status, diffs, and commits.',
+            env: {}
+        },
+        brave: {
+            name: 'brave-search',
+            transport: 'stdio',
+            command: 'npx',
+            args: ['-y', '@anthropic/brave-search'],
+            description: 'Brave Search MCP for current web lookups.',
+            env: { BRAVE_API_KEY: '' }
+        },
+        sqlite: {
+            name: 'sqlite',
+            transport: 'stdio',
+            command: 'npx',
+            args: ['-y', '@modelcontextprotocol/server-sqlite', `${documentsPath}\\bloom.db`],
+            description: 'SQLite database query tools for a local file.',
+            env: {}
+        }
+    };
+    return presets[String(presetKey || '').trim().toLowerCase()] || null;
+}
+
+function applyMcpPreset() {
+    const preset = getMcpPresetConfig(mcpPresetSelect?.value || '');
+    if (!preset) {
+        alert('Select an MCP preset first.');
+        return;
+    }
+    if (mcpNameInput) mcpNameInput.value = preset.name;
+    if (mcpTransportSelect) mcpTransportSelect.value = preset.transport;
+    syncMcpTransportFields();
+    if (mcpCommandInput) mcpCommandInput.value = preset.command || '';
+    if (mcpArgsInput) mcpArgsInput.value = formatArgsInput(preset.args || []);
+    if (mcpUrlInput) mcpUrlInput.value = preset.url || '';
+    if (mcpEnvInput) mcpEnvInput.value = formatEnvInput(preset.env || {});
+    if (mcpDescriptionInput) mcpDescriptionInput.value = preset.description || '';
+    if (mcpAutoConnectToggle) mcpAutoConnectToggle.checked = true;
 }
 
 function formatNumber(value) {
@@ -523,7 +661,19 @@ function renderMcpServersList() {
 
     const servers = normalizeMcpServers(settings.mcpServers);
     settings.mcpServers = servers;
+    const statusMap = new Map((mcpRuntimeStatus || []).map((server) => [String(server.id), server]));
     mcpList.innerHTML = '';
+
+    const connectedServers = (mcpRuntimeStatus || []).filter((server) => server.status === 'connected');
+    const availableCount = connectedServers.length;
+    const totalTools = connectedServers.reduce((sum, server) => sum + Number(server.toolCount || 0), 0);
+    if (mcpStatusBar) {
+        if (!servers.length) {
+            mcpStatusBar.textContent = 'No MCP servers configured.';
+        } else {
+            mcpStatusBar.textContent = `Configured: ${servers.length} | Connected: ${availableCount} | Tools: ${totalTools}`;
+        }
+    }
 
     if (!servers.length) {
         const empty = document.createElement('div');
@@ -534,22 +684,122 @@ function renderMcpServersList() {
     }
 
     servers.forEach((server) => {
+        const runtime = statusMap.get(String(server.id)) || {};
+        const statusValue = String(runtime.status || (server.enabled ? 'idle' : 'disabled')).toLowerCase();
+        const statusClass = statusValue === 'connected' ? 'connected' : statusValue === 'error' ? 'error' : 'idle';
+        const tools = Array.isArray(runtime.tools) ? runtime.tools : [];
+        const toolNames = tools
+            .map((item) => String(item?.name || '').trim())
+            .filter(Boolean)
+            .slice(0, 12);
+        const toolPreview = toolNames.length ? toolNames.join(', ') : 'No tools discovered yet.';
+
         const row = document.createElement('div');
         row.className = 'mcp-item';
         row.dataset.mcpId = server.id;
         row.innerHTML = `
             <input type="checkbox" class="mcp-checkbox" ${server.enabled ? 'checked' : ''} aria-label="Enable MCP ${server.name}">
             <div class="mcp-meta">
-                <div class="mcp-name">${escapeHtml(server.name)}</div>
-                <div class="mcp-url">${escapeHtml(server.url)}</div>
+                <div class="mcp-name-row">
+                    <span class="mcp-status-dot ${statusClass}" title="Status: ${escapeHtml(statusValue)}"></span>
+                    <div class="mcp-name">${escapeHtml(server.name)}</div>
+                </div>
+                <div class="mcp-url">${escapeHtml((server.transport || 'stdio').toUpperCase())} | ${escapeHtml(statusValue)}</div>
+                <div class="mcp-command">${escapeHtml(server.transport === 'sse' ? server.url : `${server.command} ${formatArgsInput(server.args)}`)}</div>
                 <div class="mcp-desc">${escapeHtml(server.description || 'No description')}</div>
+                ${runtime.error ? `<div class="mcp-error">${escapeHtml(runtime.error)}</div>` : ''}
+                <details class="mcp-tools-preview">
+                    <summary>Discovered tools (${toolNames.length || Number(runtime.toolCount || 0)})</summary>
+                    <code>${escapeHtml(toolPreview)}</code>
+                </details>
             </div>
-            <button class="skill-delete mcp-delete-btn" title="Delete MCP server" aria-label="Delete MCP server ${escapeHtml(server.name)}">
-                <i class="fa-solid fa-trash"></i>
-            </button>
+            <div class="mcp-actions">
+                <button class="mcp-mini-btn mcp-test-btn" title="Test connection">Test</button>
+                <button class="mcp-mini-btn mcp-reconnect-btn" title="Reconnect server">Reconnect</button>
+                <button class="skill-delete mcp-delete-btn" title="Delete MCP server" aria-label="Delete MCP server ${escapeHtml(server.name)}">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            </div>
         `;
         mcpList.appendChild(row);
     });
+}
+
+function syncMcpTransportFields() {
+    const transport = String(mcpTransportSelect?.value || 'stdio').toLowerCase();
+    const stdioFields = document.querySelectorAll('.mcp-stdio-field');
+    const sseFields = document.querySelectorAll('.mcp-sse-field');
+    stdioFields.forEach((field) => {
+        field.style.display = transport === 'stdio' ? '' : 'none';
+    });
+    sseFields.forEach((field) => {
+        field.style.display = transport === 'sse' ? '' : 'none';
+    });
+}
+
+async function refreshMcpRuntimeStatus() {
+    try {
+        const response = await fetch(apiUrl('/mcp/status'));
+        if (!response.ok) {
+            const details = await getResponseErrorDetails(response);
+            throw new Error(`MCP status failed ${response.status}${details ? ` - ${details}` : ''}`);
+        }
+
+        const data = await response.json();
+        mcpRuntimeStatus = Array.isArray(data?.servers) ? data.servers : [];
+        if (mcpStatusBar && data?.available === false) {
+            mcpStatusBar.textContent = `MCP SDK unavailable: ${data?.importError || 'install backend requirements'}`;
+        }
+    } catch (error) {
+        console.warn('MCP status fetch failed:', error.message || error);
+        mcpRuntimeStatus = [];
+        if (mcpStatusBar) {
+            mcpStatusBar.textContent = 'MCP status unavailable.';
+        }
+    }
+
+    renderMcpServersList();
+}
+
+async function refreshMcpConnections() {
+    try {
+        const response = await fetch(apiUrl('/mcp/refresh'), { method: 'POST' });
+        if (!response.ok) {
+            const details = await getResponseErrorDetails(response);
+            throw new Error(`MCP refresh failed ${response.status}${details ? ` - ${details}` : ''}`);
+        }
+        const data = await response.json();
+        mcpRuntimeStatus = Array.isArray(data?.servers) ? data.servers : [];
+    } catch (error) {
+        console.warn('MCP reconnect failed:', error.message || error);
+    }
+    renderMcpServersList();
+}
+
+async function testMcpServer(serverId) {
+    const safeId = String(serverId || '').trim();
+    if (!safeId) return;
+    try {
+        const response = await fetch(apiUrl(`/mcp/servers/${encodeURIComponent(safeId)}/test`), { method: 'POST' });
+        if (!response.ok) {
+            const details = await getResponseErrorDetails(response);
+            throw new Error(`MCP test failed ${response.status}${details ? ` - ${details}` : ''}`);
+        }
+    } catch (error) {
+        alert(`MCP test failed.\n\n${error.message || error}`);
+    }
+    await refreshMcpRuntimeStatus();
+}
+
+async function reconnectMcpServer(serverId) {
+    const safeId = String(serverId || '').trim();
+    if (!safeId) return;
+    try {
+        await fetch(apiUrl(`/mcp/servers/${encodeURIComponent(safeId)}/reconnect`), { method: 'POST' });
+    } catch (error) {
+        console.warn('MCP reconnect request failed:', error.message || error);
+    }
+    await refreshMcpRuntimeStatus();
 }
 
 async function loadUsageSummary() {
@@ -2322,6 +2572,8 @@ async function loadSettings() {
         updateAgentModeUI();
         renderSkillsList();
         renderMcpServersList();
+        syncMcpTransportFields();
+        await refreshMcpRuntimeStatus();
         renderUsageSummary();
         permissionManager.render();
     } catch (error) {
@@ -2331,6 +2583,7 @@ async function loadSettings() {
         updateAgentModeUI();
         renderSkillsList();
         renderMcpServersList();
+        syncMcpTransportFields();
         renderUsageSummary();
         permissionManager.render();
     }
@@ -2425,11 +2678,24 @@ async function uploadSkillFromFile() {
 
 async function addMcpServerFromInputs() {
     const name = String(mcpNameInput?.value || '').trim();
+    const transport = String(mcpTransportSelect?.value || 'stdio').trim().toLowerCase() === 'sse' ? 'sse' : 'stdio';
+    const command = String(mcpCommandInput?.value || '').trim();
+    const args = parseArgsInput(mcpArgsInput?.value || '');
     const url = String(mcpUrlInput?.value || '').trim();
+    const env = parseEnvInput(mcpEnvInput?.value || '');
     const description = String(mcpDescriptionInput?.value || '').trim();
+    const autoConnect = Boolean(mcpAutoConnectToggle?.checked);
 
-    if (!name || !url) {
-        alert('Please add MCP server name and URL.');
+    if (!name) {
+        alert('Please add an MCP server name.');
+        return;
+    }
+    if (transport === 'stdio' && !command) {
+        alert('Please add an MCP command for stdio transport.');
+        return;
+    }
+    if (transport === 'sse' && !url) {
+        alert('Please add an SSE URL for this server.');
         return;
     }
 
@@ -2437,19 +2703,29 @@ async function addMcpServerFromInputs() {
     nextServers.push({
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         name,
+        transport,
+        command,
+        args,
         url,
+        env,
         description,
-        enabled: true
+        enabled: true,
+        autoConnect
     });
 
     settings.mcpServers = nextServers;
     renderMcpServersList();
     await saveSettings();
+    await refreshMcpConnections();
     await loadUsageSummary();
 
     if (mcpNameInput) mcpNameInput.value = '';
+    if (mcpCommandInput) mcpCommandInput.value = '';
+    if (mcpArgsInput) mcpArgsInput.value = '';
     if (mcpUrlInput) mcpUrlInput.value = '';
+    if (mcpEnvInput) mcpEnvInput.value = '';
     if (mcpDescriptionInput) mcpDescriptionInput.value = '';
+    if (mcpAutoConnectToggle) mcpAutoConnectToggle.checked = true;
 }
 
 async function openLocalPath(targetPath) {
@@ -2475,6 +2751,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyZoomLevel(1);
     updateSidebarToggleState();
     setSettingsPanelOpen(false);
+    syncMcpTransportFields();
 
     if (sidebarResizeZone) {
         sidebarResizeZone.addEventListener('mousedown', onSidebarResizeStart);
@@ -2562,8 +2839,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 chatInput.addEventListener('input', updateCharCount);
 inputWrapper?.addEventListener('click', (event) => {
     if (event.target.closest('button')) return;
+    const clickedInsideInput = event.target === chatInput || Boolean(event.target.closest('#chat-input'));
     ensureChatInputReady();
-    focusChatInput();
+    focusChatInput(!clickedInsideInput);
 });
 
 chatInput.addEventListener('compositionstart', () => {
@@ -2873,16 +3151,40 @@ addMcpBtn?.addEventListener('click', async () => {
     await addMcpServerFromInputs();
 });
 
+applyMcpPresetBtn?.addEventListener('click', () => {
+    applyMcpPreset();
+});
+
+refreshMcpBtn?.addEventListener('click', async () => {
+    await refreshMcpConnections();
+});
+
+mcpTransportSelect?.addEventListener('change', () => {
+    syncMcpTransportFields();
+});
+
 mcpList?.addEventListener('click', async (event) => {
     const item = event.target.closest('.mcp-item');
     if (!item) return;
-    if (!event.target.closest('.mcp-delete-btn')) return;
 
     const mcpId = item.dataset.mcpId;
-    settings.mcpServers = normalizeMcpServers(settings.mcpServers).filter((server) => server.id !== mcpId);
-    renderMcpServersList();
-    await saveSettings();
-    await loadUsageSummary();
+    if (event.target.closest('.mcp-delete-btn')) {
+        settings.mcpServers = normalizeMcpServers(settings.mcpServers).filter((server) => server.id !== mcpId);
+        renderMcpServersList();
+        await saveSettings();
+        await refreshMcpConnections();
+        await loadUsageSummary();
+        return;
+    }
+
+    if (event.target.closest('.mcp-test-btn')) {
+        await testMcpServer(mcpId);
+        return;
+    }
+
+    if (event.target.closest('.mcp-reconnect-btn')) {
+        await reconnectMcpServer(mcpId);
+    }
 });
 
 mcpList?.addEventListener('change', async (event) => {
@@ -2903,6 +3205,7 @@ mcpList?.addEventListener('change', async (event) => {
     });
 
     await saveSettings();
+    await refreshMcpConnections();
 });
 
 skillsList?.addEventListener('change', async (event) => {

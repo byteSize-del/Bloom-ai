@@ -383,6 +383,9 @@ def model_observation_from_result(result: Dict[str, Any]) -> str:
 
 def user_facing_tool_summary(result: Dict[str, Any]) -> str:
     tool_name = str(result.get("tool", "")).strip()
+    if tool_name.startswith("mcp:"):
+        server_name = str(result.get("serverName", "MCP server")).strip()
+        return f"I completed the requested action through {server_name}."
 
     if tool_name == "write_file":
         return f"I created or updated `{result.get('path', 'the file')}` successfully."

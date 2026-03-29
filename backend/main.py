@@ -16,6 +16,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from agent_loop import AgentLoopController
 from chat_history import ChatHistoryManager
+from mcp_manager import MCPManager
 from model_handler import OllamaHandler
 from tool_executor import SafeToolExecutor
 
@@ -28,7 +29,19 @@ async def lifespan(app: FastAPI):
     data_dir = os.environ.get("DATA_DIR", os.path.join(os.path.expanduser("~"), ".offline-ai-chat", "sessions"))
     os.makedirs(data_dir, exist_ok=True)
     print(f"Backend initialized. Data directory: {data_dir}")
-    yield
+    app.state.mcp_manager = mcp_manager
+    try:
+        settings = chat_history_manager.load_settings()
+        await mcp_manager.refresh_all(settings)
+    except Exception as exc:
+        print(f"MCP startup refresh failed: {exc}")
+    try:
+        yield
+    finally:
+        try:
+            await mcp_manager.shutdown()
+        except Exception as exc:
+            print(f"MCP shutdown failed: {exc}")
 
 
 app = FastAPI(
@@ -54,7 +67,8 @@ app.add_middleware(
 ollama_handler = OllamaHandler()
 chat_history_manager = ChatHistoryManager()
 tool_executor = SafeToolExecutor()
-agent_loop_controller = AgentLoopController(ollama_handler)
+mcp_manager = MCPManager()
+agent_loop_controller = AgentLoopController(ollama_handler, mcp_manager=mcp_manager)
 
 
 class Message(BaseModel):
@@ -406,8 +420,63 @@ async def get_settings():
 @app.post("/settings")
 async def update_settings(settings: SettingsRequest):
     try:
-        chat_history_manager.save_settings(settings.model_dump())
+        payload = settings.model_dump()
+        chat_history_manager.save_settings(payload)
+        await mcp_manager.refresh_all(payload)
         return {"success": True}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/mcp/refresh")
+async def refresh_mcp_servers():
+    try:
+        settings = chat_history_manager.load_settings()
+        await mcp_manager.refresh_all(settings)
+        return {
+            "success": True,
+            "available": mcp_manager.is_available,
+            "importError": mcp_manager.import_error,
+            "servers": mcp_manager.get_status(),
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/mcp/status")
+async def get_mcp_status():
+    return {
+        "available": mcp_manager.is_available,
+        "importError": mcp_manager.import_error,
+        "servers": mcp_manager.get_status(),
+    }
+
+
+@app.get("/mcp/tools")
+async def get_mcp_tools():
+    return {
+        "available": mcp_manager.is_available,
+        "tools": mcp_manager.get_all_tools(),
+    }
+
+
+@app.post("/mcp/servers/{server_id}/test")
+async def test_mcp_server(server_id: str):
+    try:
+        return await mcp_manager.test_server(server_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="MCP server not found")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/mcp/servers/{server_id}/reconnect")
+async def reconnect_mcp_server(server_id: str):
+    try:
+        status = await mcp_manager.reconnect_server(server_id)
+        return {"success": True, "server": status}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="MCP server not found")
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 

@@ -1106,13 +1106,23 @@
             background: var(--bg-accent);
         }
 
+        .mcp-status-bar {
+            margin-bottom: 10px;
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            font-size: 12px;
+            padding: 10px 12px;
+        }
+
         .mcp-list {
-            max-height: 180px;
+            max-height: 240px;
             overflow-y: auto;
             display: grid;
             gap: 8px;
             padding-right: 2px;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
         }
 
         .mcp-empty {
@@ -1125,14 +1135,23 @@
             display: grid;
             grid-template-columns: auto 1fr auto;
             gap: 10px;
-            align-items: center;
+            align-items: flex-start;
             border: 1px solid var(--border-subtle);
             border-radius: 10px;
             background: var(--bg-secondary);
-            padding: 9px 10px;
+            padding: 10px 10px;
         }
 
         .mcp-meta {
+            min-width: 0;
+            display: grid;
+            gap: 3px;
+        }
+
+        .mcp-name-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
             min-width: 0;
         }
 
@@ -1145,13 +1164,124 @@
             text-overflow: ellipsis;
         }
 
+        .mcp-status-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            display: inline-block;
+            border: 1px solid var(--border-subtle);
+            background: var(--text-muted);
+            flex: 0 0 auto;
+        }
+
+        .mcp-status-dot.connected {
+            background: #27c07d;
+            border-color: #27c07d;
+        }
+
+        .mcp-status-dot.error {
+            background: #f05353;
+            border-color: #f05353;
+        }
+
+        .mcp-status-dot.idle {
+            background: #e0a13a;
+            border-color: #e0a13a;
+        }
+
         .mcp-url,
-        .mcp-desc {
+        .mcp-desc,
+        .mcp-command,
+        .mcp-error {
             font-size: 11px;
             color: var(--text-muted);
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+        }
+
+        .mcp-error {
+            color: #f27e7e;
+        }
+
+        .mcp-actions {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .mcp-mini-btn {
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-primary);
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 600;
+            border-radius: 8px;
+            padding: 5px 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .mcp-mini-btn:hover {
+            border-color: var(--accent-color);
+            color: var(--accent-color);
+            background: var(--bg-accent);
+        }
+
+        .mcp-tools-preview {
+            margin-top: 4px;
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.15);
+            padding: 5px 8px;
+        }
+
+        .mcp-tools-preview summary {
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .mcp-tools-preview code {
+            display: block;
+            margin-top: 6px;
+            color: var(--text-muted);
+            font-size: 11px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .mcp-creator {
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            padding: 10px;
+            background: var(--bg-secondary);
+            display: grid;
+            gap: 10px;
+        }
+
+        .mcp-creator-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .mcp-creator .skill-input,
+        .mcp-creator .skill-textarea,
+        .mcp-creator .model-select {
+            width: 100%;
+        }
+
+        .mcp-wide {
+            grid-column: 1 / -1;
+        }
+
+        @media (max-width: 900px) {
+            .mcp-creator-grid {
+                grid-template-columns: 1fr;
+            }
         }
 
         .settings-panel::-webkit-scrollbar {
@@ -2943,10 +3073,45 @@
 
                         <div class="setting-row section-span">
                             <label class="setting-label">MCP Servers</label>
-                            <div class="coming-soon-list">
-                                <div class="coming-soon-item">
-                                    <span>MCP Server Integration</span>
-                                    <span class="coming-soon-badge">Coming Soon</span>
+                            <div class="mcp-status-bar" id="mcp-status-bar">
+                                MCP status unavailable.
+                            </div>
+                            <div class="mcp-list" id="mcp-list"></div>
+                            <div class="mcp-creator">
+                                <div class="mcp-creator-grid">
+                                    <select class="model-select mcp-wide" id="mcp-preset-select">
+                                        <option value="">Quick Add Preset (optional)</option>
+                                        <option value="filesystem">Filesystem</option>
+                                        <option value="github">GitHub</option>
+                                        <option value="git">Git</option>
+                                        <option value="brave">Brave Search</option>
+                                        <option value="sqlite">SQLite</option>
+                                    </select>
+                                    <input type="text" class="skill-input" id="mcp-name-input" placeholder="Server name (example: filesystem)">
+                                    <select class="model-select" id="mcp-transport-select">
+                                        <option value="stdio">Stdio (local command)</option>
+                                        <option value="sse">SSE (remote URL)</option>
+                                    </select>
+                                    <input type="text" class="skill-input mcp-stdio-field" id="mcp-command-input" placeholder="Command (example: npx)">
+                                    <input type="text" class="skill-input mcp-stdio-field" id="mcp-args-input" placeholder="Args (example: -y @modelcontextprotocol/server-filesystem C:\Users\you\Documents)">
+                                    <input type="text" class="skill-input mcp-sse-field mcp-wide" id="mcp-url-input" placeholder="SSE URL (example: http://localhost:3001/sse)" style="display:none;">
+                                    <textarea class="skill-textarea mcp-wide" id="mcp-env-input" placeholder="Environment variables (optional, one per line: KEY=value)"></textarea>
+                                    <textarea class="skill-textarea mcp-wide" id="mcp-description-input" placeholder="Description (optional)"></textarea>
+                                </div>
+                                <div class="switch-row">
+                                    <span class="switch-label">Auto-connect on app launch</span>
+                                    <input class="switch-input" id="mcp-autoconnect-toggle" type="checkbox" checked>
+                                </div>
+                                <div class="skill-actions">
+                                    <button class="skill-action-btn" id="apply-mcp-preset-btn" type="button">
+                                        <i class="fa-solid fa-wand-magic-sparkles"></i> Apply Preset
+                                    </button>
+                                    <button class="skill-action-btn" id="add-mcp-btn" type="button">
+                                        <i class="fa-solid fa-plus"></i> Add Server
+                                    </button>
+                                    <button class="skill-action-btn" id="refresh-mcp-btn" type="button">
+                                        <i class="fa-solid fa-rotate"></i> Reconnect All
+                                    </button>
                                 </div>
                             </div>
                         </div>
