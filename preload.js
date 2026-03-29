@@ -42,6 +42,9 @@ contextBridge.exposeInMainWorld('settingsAPI', {
 contextBridge.exposeInMainWorld('fileAPI', {
   chooseDirectory: async () => {
     return await ipcRenderer.invoke('file/choose-directory');
+  },
+  chooseSkillFile: async () => {
+    return await ipcRenderer.invoke('file/choose-skill');
   }
 });
 
@@ -89,5 +92,44 @@ contextBridge.exposeInMainWorld('appCommands', {
 contextBridge.exposeInMainWorld('systemAPI', {
   openApp: async (appId) => {
     return await ipcRenderer.invoke('system/open-app', appId);
+  },
+  getRuntimeStatus: async () => {
+    return await ipcRenderer.invoke('system/get-runtime-status');
+  },
+  getInfo: async () => {
+    return await ipcRenderer.invoke('system/get-info');
+  },
+  listDir: async (targetPath) => {
+    return await ipcRenderer.invoke('system/list-dir', targetPath);
+  },
+  readFile: async (targetPath, startLine, endLine) => {
+    return await ipcRenderer.invoke('system/read-file', targetPath, startLine, endLine);
+  },
+  writeFile: async (targetPath, content) => {
+    return await ipcRenderer.invoke('system/write-file', targetPath, content);
+  },
+  runCommand: async (command) => {
+    return await ipcRenderer.invoke('system/run-command', command);
+  },
+  readClipboard: async () => {
+    return await ipcRenderer.invoke('system/read-clipboard');
+  },
+  writeClipboard: async (text) => {
+    return await ipcRenderer.invoke('system/write-clipboard', text);
+  },
+  getProcesses: async () => {
+    return await ipcRenderer.invoke('system/get-processes');
+  },
+  openAuditLog: async () => {
+    return await ipcRenderer.invoke('system/open-audit-log');
+  }
+});
+
+contextBridge.exposeInMainWorld('shellAPI', {
+  openPath: async (targetPath) => {
+    return await ipcRenderer.invoke('shell/open-path', targetPath);
+  },
+  openExternal: async (targetUrl) => {
+    return await ipcRenderer.invoke('shell/open-external', targetUrl);
   }
 });

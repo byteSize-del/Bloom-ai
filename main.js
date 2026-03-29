@@ -1,5 +1,5 @@
-const { app, BrowserWindow, shell, dialog, ipcMain } = require('electron');
-const { spawn } = require('child_process');
+const { app, BrowserWindow, shell, dialog, ipcMain, clipboard } = require('electron');
+const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -9,12 +9,34 @@ let mainWindow;
 let backendProcess;
 const BACKEND_PORT = 8000;
 const BACKEND_URL = `http://127.0.0.1:${BACKEND_PORT}`;
+const OLLAMA_PORT = 11434;
+const OLLAMA_URL = `http://127.0.0.1:${OLLAMA_PORT}`;
+const OLLAMA_DOWNLOAD_URL = 'https://ollama.com/download';
 const ALLOWED_EXTERNAL_HOSTS = new Set([
   'ollama.com',
   'www.ollama.com',
   'github.com',
   'www.github.com'
 ]);
+const SYSTEM_BLOCKED_PATHS = [
+  'C:\\Windows\\System32',
+  'C:\\Windows\\SysWOW64',
+  'C:\\Program Files',
+  'C:\\Program Files (x86)',
+  'C:\\ProgramData'
+];
+const SYSTEM_BLOCKED_COMMANDS = [
+  'format',
+  'del /f /s /q c:\\',
+  'rm -rf',
+  'shutdown',
+  'taskkill /f /im',
+  'reg delete',
+  'bcdedit',
+  'diskpart'
+];
+const MAX_AGENT_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_AGENT_COMMAND_TIMEOUT_MS = 30_000;
 
 // Ensure data directory exists
 const dataDir = path.join(app.getPath('appData'), 'OfflineAIChat', 'sessions');
@@ -53,6 +75,263 @@ function isAllowedExternalUrl(url) {
   } catch {
     return false;
   }
+}
+
+function normalizeUserPath(rawPath) {
+  const value = String(rawPath || '').trim().replace(/^["']|["']$/g, '');
+  if (!value) {
+    throw new Error('Path is required.');
+  }
+  return path.resolve(value);
+}
+
+function isBlockedSystemPath(targetPath) {
+  const candidate = String(targetPath || '').toLowerCase().replace(/[\\\/]+$/, '');
+  return SYSTEM_BLOCKED_PATHS.some((blockedPath) => {
+    const blocked = blockedPath.toLowerCase().replace(/[\\\/]+$/, '');
+    return candidate === blocked || candidate.startsWith(`${blocked}\\`);
+  });
+}
+
+function isBlockedSystemCommand(command) {
+  const normalized = String(command || '').trim().toLowerCase();
+  return SYSTEM_BLOCKED_COMMANDS.some((blocked) => normalized.includes(blocked));
+}
+
+function isReadOnlyCommand(command) {
+  const normalized = String(command || '').trim().toLowerCase();
+  const readOnlyPrefixes = ['dir', 'ls', 'ipconfig', 'whoami', 'echo', 'type', 'cat', 'tasklist', 'systeminfo'];
+  return readOnlyPrefixes.some((prefix) => normalized.startsWith(prefix))
+    && !['>', 'del ', 'erase ', 'move ', 'copy ', 'ren ', 'mkdir ', 'rmdir ', 'remove-item', 'set-content', 'out-file'].some((token) => normalized.includes(token));
+}
+
+async function getSystemInfoPayload() {
+  const runtime = await getRuntimeStatus();
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+
+  return {
+    ...runtime,
+    cpuModel: os.cpus()?.[0]?.model || 'Unknown CPU',
+    cpuCount: os.cpus()?.length || os.availableParallelism?.() || 0,
+    totalMemoryBytes: totalMem,
+    freeMemoryBytes: freeMem,
+    usedMemoryBytes: Math.max(0, totalMem - freeMem),
+    hostname: os.hostname(),
+    username: os.userInfo().username
+  };
+}
+
+function readFileSegment(targetPath, startLine = 1, endLine = 200) {
+  const resolved = normalizeUserPath(targetPath);
+  if (isBlockedSystemPath(resolved)) {
+    throw new Error('This action was blocked because it targets a protected Windows path.');
+  }
+  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+    throw new Error(`File not found: ${resolved}`);
+  }
+
+  const rawLines = fs.readFileSync(resolved, 'utf8').split(/\r?\n/);
+  const safeStart = Math.max(1, Number(startLine) || 1);
+  const safeEnd = Math.max(safeStart, Number(endLine) || (safeStart + 199));
+  const excerpt = rawLines.slice(safeStart - 1, safeEnd);
+
+  return {
+    path: resolved,
+    startLine: safeStart,
+    endLine: Math.min(safeEnd, rawLines.length),
+    content: excerpt.join('\n')
+  };
+}
+
+function isOllamaResponsive() {
+  return new Promise((resolve) => {
+    const req = http.get(`${OLLAMA_URL}/api/tags`, (res) => {
+      res.resume();
+      resolve(res.statusCode >= 200 && res.statusCode < 500);
+    });
+    req.setTimeout(1500, () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.on('error', () => resolve(false));
+  });
+}
+
+function isBackendResponsive() {
+  return new Promise((resolve) => {
+    const req = http.get(`${BACKEND_URL}/health`, (res) => {
+      res.resume();
+      resolve(res.statusCode >= 200 && res.statusCode < 500);
+    });
+    req.setTimeout(1500, () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.on('error', () => resolve(false));
+  });
+}
+
+function getWindowsGpuInfo() {
+  if (process.platform !== 'win32') {
+    return null;
+  }
+
+  try {
+    const probe = spawnSync(
+      'powershell',
+      [
+        '-NoProfile',
+        '-Command',
+        "(Get-CimInstance Win32_VideoController | Select-Object -First 1 Name,AdapterRAM | ConvertTo-Json -Compress)"
+      ],
+      {
+        windowsHide: true,
+        encoding: 'utf8'
+      }
+    );
+
+    if (probe.status !== 0 || !probe.stdout) {
+      return null;
+    }
+
+    const parsed = JSON.parse(probe.stdout.trim());
+    const name = String(parsed?.Name || '').trim();
+    const adapterRam = Number(parsed?.AdapterRAM || 0);
+
+    return {
+      name: name || 'Unknown GPU',
+      vramBytes: adapterRam,
+      vramGb: adapterRam > 0 ? Number((adapterRam / (1024 ** 3)).toFixed(1)) : null
+    };
+  } catch (error) {
+    console.warn('Failed to detect GPU info:', error.message);
+    return null;
+  }
+}
+
+async function getRuntimeStatus() {
+  const [ollamaReady, backendReady] = await Promise.all([
+    isOllamaResponsive(),
+    isBackendResponsive()
+  ]);
+
+  const gpu = getWindowsGpuInfo();
+  const modelsPath = path.join(os.homedir(), '.ollama', 'models');
+
+  return {
+    ollamaReady,
+    backendReady,
+    computeDevice: gpu ? 'GPU' : 'CPU',
+    gpuName: gpu?.name || null,
+    gpuVramGb: gpu?.vramGb ?? null,
+    modelsPath,
+    platform: process.platform,
+    appVersion: app.getVersion()
+  };
+}
+
+function resolveOllamaExecutable() {
+  if (process.platform !== 'win32') {
+    return null;
+  }
+
+  const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+  const candidates = [
+    path.join(localAppData, 'Programs', 'Ollama', 'ollama.exe'),
+    path.join(localAppData, 'Programs', 'Ollama', 'Ollama.exe')
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  try {
+    const whereResult = spawnSync('where', ['ollama'], {
+      windowsHide: true,
+      encoding: 'utf8'
+    });
+
+    if (whereResult.status === 0 && typeof whereResult.stdout === 'string') {
+      const first = whereResult.stdout
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find(Boolean);
+      if (first && fs.existsSync(first)) {
+        return first;
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to resolve Ollama from PATH:', error.message);
+  }
+
+  return null;
+}
+
+function startOllamaInBackground(ollamaExecutable) {
+  try {
+    const child = spawn(ollamaExecutable, ['serve'], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true
+    });
+    child.unref();
+    return true;
+  } catch (error) {
+    console.error('Failed to start Ollama in background:', error);
+    return false;
+  }
+}
+
+async function waitForOllamaReady(timeoutMs = 15000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (await isOllamaResponsive()) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return false;
+}
+
+async function promptInstallOllama() {
+  await dialog.showMessageBox({
+    type: 'warning',
+    buttons: ['Install Ollama'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+    title: 'Ollama Required',
+    message: 'Ollama was not found on this PC.',
+    detail: 'Bloom needs Ollama for local model chat. Click Install Ollama to open the official installer page.'
+  });
+  await shell.openExternal(OLLAMA_DOWNLOAD_URL);
+}
+
+async function ensureOllamaRunningInBackground() {
+  if (await isOllamaResponsive()) {
+    return true;
+  }
+
+  const ollamaExecutable = resolveOllamaExecutable();
+  if (!ollamaExecutable) {
+    await promptInstallOllama();
+    return false;
+  }
+
+  const started = startOllamaInBackground(ollamaExecutable);
+  if (!started) {
+    await promptInstallOllama();
+    return false;
+  }
+
+  const ready = await waitForOllamaReady();
+  if (!ready) {
+    console.warn('Ollama launch command issued, but service did not respond in time.');
+  }
+  return ready;
 }
 
 function createBackend() {
@@ -216,6 +495,15 @@ async function startBackendAndCreateWindow() {
   try {
     // Create window first so user sees something
     createWindow();
+
+    // Ensure Ollama is available and running in background.
+    const ollamaReady = await ensureOllamaRunningInBackground();
+    if (!ollamaReady) {
+      dialog.showErrorBox(
+        'Ollama Not Ready',
+        'Bloom could not start Ollama automatically. Install or open Ollama, then relaunch Bloom.'
+      );
+    }
 
     // Start backend in background with timeout
     const backendPromise = createBackend();
@@ -460,6 +748,35 @@ ipcMain.handle('file/choose-directory', async () => {
   return result || [];
 });
 
+ipcMain.handle('file/choose-skill', async () => {
+  const result = dialog.showOpenDialogSync(mainWindow, {
+    title: 'Import Skill File',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Skill Files', extensions: ['md', 'txt', 'json'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  });
+
+  if (!result || !result.length) {
+    return null;
+  }
+
+  const skillPath = result[0];
+  try {
+    const raw = fs.readFileSync(skillPath, 'utf8');
+    return {
+      path: skillPath,
+      name: path.basename(skillPath, path.extname(skillPath)),
+      content: raw
+    };
+  } catch (error) {
+    return {
+      error: error.message || String(error)
+    };
+  }
+});
+
 ipcMain.handle('window/minimize', async (event) => {
   const window = BrowserWindow.fromWebContents(event.sender);
   if (window) {
@@ -502,6 +819,37 @@ ipcMain.handle('window/toggle-fullscreen', async (event) => {
 ipcMain.handle('window/is-fullscreen', async (event) => {
   const window = BrowserWindow.fromWebContents(event.sender);
   return window ? window.isFullScreen() : false;
+});
+
+ipcMain.handle('shell/open-path', async (_event, targetPath) => {
+  const rawPath = String(targetPath || '').trim();
+  if (!rawPath) {
+    return { success: false, error: 'Path is empty' };
+  }
+
+  try {
+    const result = await shell.openPath(rawPath);
+    if (result) {
+      return { success: false, error: result };
+    }
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('shell/open-external', async (_event, targetUrl) => {
+  const url = String(targetUrl || '').trim();
+  if (!isAllowedExternalUrl(url)) {
+    return { success: false, error: 'Blocked external URL' };
+  }
+
+  try {
+    await shell.openExternal(url);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
 });
 
 ipcMain.handle('app/command', async (event, command) => {
@@ -548,10 +896,19 @@ ipcMain.handle('system/open-app', async (event, appId) => {
   const appMap = {
     notepad: { command: 'notepad.exe', label: 'Notepad' },
     calculator: { command: 'calc.exe', label: 'Calculator' },
+    browser: { command: 'cmd.exe', args: ['/c', 'start', ''], label: 'Browser' },
+    chrome: { command: 'cmd.exe', args: ['/c', 'start', 'chrome'], label: 'Chrome' },
     explorer: { command: 'explorer.exe', label: 'File Explorer' },
     cmd: { command: 'cmd.exe', label: 'Command Prompt' },
     powershell: { command: 'powershell.exe', label: 'PowerShell' },
-    vscode: { command: 'code', label: 'VS Code' }
+    vscode: { command: 'code', label: 'VS Code' },
+    paint: { command: 'mspaint.exe', label: 'Paint' },
+    taskmgr: { command: 'taskmgr.exe', label: 'Task Manager' },
+    settings: { command: 'cmd.exe', args: ['/c', 'start', 'ms-settings:'], label: 'Windows Settings' },
+    spotify: { command: 'spotify', label: 'Spotify' },
+    discord: { command: 'discord', label: 'Discord' },
+    word: { command: 'winword', label: 'Microsoft Word' },
+    excel: { command: 'excel', label: 'Microsoft Excel' }
   };
 
   const target = appMap[normalized];
@@ -560,13 +917,155 @@ ipcMain.handle('system/open-app', async (event, appId) => {
   }
 
   try {
-    const child = spawn(target.command, [], {
+    const child = spawn(target.command, target.args || [], {
       detached: true,
       stdio: 'ignore',
       windowsHide: false
     });
     child.unref();
     return { success: true, app: normalized, label: target.label };
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('system/get-runtime-status', async () => {
+  return await getRuntimeStatus();
+});
+
+ipcMain.handle('system/get-info', async () => {
+  try {
+    return { success: true, data: await getSystemInfoPayload() };
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('system/list-dir', async (_event, targetPath) => {
+  try {
+    const resolved = normalizeUserPath(targetPath);
+    if (isBlockedSystemPath(resolved)) {
+      throw new Error('This action was blocked because it targets a protected Windows path.');
+    }
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+      throw new Error(`Directory not found: ${resolved}`);
+    }
+
+    const entries = fs.readdirSync(resolved, { withFileTypes: true })
+      .slice(0, 150)
+      .map((entry) => {
+        const fullPath = path.join(resolved, entry.name);
+        const stat = fs.statSync(fullPath);
+        return {
+          name: entry.name,
+          type: entry.isDirectory() ? 'directory' : 'file',
+          size: entry.isDirectory() ? null : stat.size
+        };
+      });
+
+    return { success: true, path: resolved, entries };
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('system/read-file', async (_event, targetPath, startLine = 1, endLine = 200) => {
+  try {
+    return { success: true, ...readFileSegment(targetPath, startLine, endLine) };
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('system/write-file', async (_event, targetPath, content) => {
+  try {
+    const resolved = normalizeUserPath(targetPath);
+    if (isBlockedSystemPath(resolved)) {
+      throw new Error('This action was blocked because it targets a protected Windows path.');
+    }
+    const payload = String(content || '');
+    if (Buffer.byteLength(payload, 'utf8') > MAX_AGENT_FILE_BYTES) {
+      throw new Error("This action was blocked because the file is larger than Bloom's safe write limit.");
+    }
+    fs.mkdirSync(path.dirname(resolved), { recursive: true });
+    fs.writeFileSync(resolved, payload, 'utf8');
+    return { success: true, path: resolved, bytesWritten: Buffer.byteLength(payload, 'utf8') };
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('system/run-command', async (_event, command) => {
+  try {
+    const normalized = String(command || '').trim();
+    if (!normalized) {
+      throw new Error('Command is required.');
+    }
+    if (isBlockedSystemCommand(normalized)) {
+      throw new Error('This action was blocked because the command could damage the system.');
+    }
+    const completed = spawnSync('cmd.exe', ['/c', normalized], {
+      windowsHide: true,
+      encoding: 'utf8',
+      timeout: MAX_AGENT_COMMAND_TIMEOUT_MS
+    });
+    return {
+      success: true,
+      command: normalized,
+      readOnly: isReadOnlyCommand(normalized),
+      exitCode: completed.status ?? completed.statusCode ?? 0,
+      stdout: completed.stdout || '',
+      stderr: completed.stderr || ''
+    };
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('system/read-clipboard', async () => {
+  try {
+    return { success: true, content: clipboard.readText() };
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('system/write-clipboard', async (_event, text) => {
+  try {
+    clipboard.writeText(String(text || ''));
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('system/get-processes', async () => {
+  try {
+    const completed = spawnSync('tasklist', [], {
+      windowsHide: true,
+      encoding: 'utf8',
+      timeout: MAX_AGENT_COMMAND_TIMEOUT_MS
+    });
+    return { success: true, output: completed.stdout || completed.stderr || '' };
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('system/open-audit-log', async () => {
+  const auditLogPath = path.join(app.getPath('appData'), 'OfflineAIChat', 'agent_audit.jsonl');
+  try {
+    fs.mkdirSync(path.dirname(auditLogPath), { recursive: true });
+    if (!fs.existsSync(auditLogPath)) {
+      fs.writeFileSync(auditLogPath, '', 'utf8');
+    }
+    const child = spawn('notepad.exe', [auditLogPath], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: false
+    });
+    child.unref();
+    return { success: true, path: auditLogPath };
   } catch (error) {
     return { success: false, error: error.message || String(error) };
   }

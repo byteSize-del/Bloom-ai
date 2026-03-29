@@ -223,6 +223,66 @@ class ChatHistoryManager:
 
         return "New Chat"
 
+    async def get_usage_summary(self, token_limit: int = 200000) -> Dict[str, Any]:
+        """
+        Build usage summary from saved sessions.
+
+        Args:
+            token_limit: Monthly token allowance for progress calculations.
+
+        Returns:
+            Usage summary metrics.
+        """
+        session_count = 0
+        message_count = 0
+        user_message_count = 0
+        assistant_message_count = 0
+        character_count = 0
+
+        try:
+            for filename in os.listdir(self.data_dir):
+                if not filename.endswith(".json"):
+                    continue
+
+                filepath = os.path.join(self.data_dir, filename)
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        session = json.load(f)
+                except (json.JSONDecodeError, IOError):
+                    continue
+
+                session_count += 1
+                messages = session.get("messages", [])
+                message_count += len(messages)
+
+                for msg in messages:
+                    role = str(msg.get("role", "")).strip().lower()
+                    content = str(msg.get("content", ""))
+                    character_count += len(content)
+                    if role == "user":
+                        user_message_count += 1
+                    elif role in {"assistant", "ai", "bot", "model"}:
+                        assistant_message_count += 1
+        except OSError:
+            pass
+
+        estimated_tokens_used = max(0, int(round(character_count / 4)))
+        safe_limit = max(1, int(token_limit))
+        usage_percent = min(100.0, (estimated_tokens_used / safe_limit) * 100.0)
+        remaining_tokens = max(0, safe_limit - estimated_tokens_used)
+
+        return {
+            "sessionCount": session_count,
+            "messageCount": message_count,
+            "userMessageCount": user_message_count,
+            "assistantMessageCount": assistant_message_count,
+            "characterCount": character_count,
+            "estimatedTokensUsed": estimated_tokens_used,
+            "tokenLimitMonthly": safe_limit,
+            "remainingTokens": remaining_tokens,
+            "usagePercent": round(usage_percent, 2)
+        }
+
     def save_settings(self, settings: Dict[str, Any]) -> None:
         """
         Save application settings.
@@ -245,11 +305,20 @@ class ChatHistoryManager:
         """
         defaults = {
             "theme": "dark",
-            "systemPrompt": "You are a helpful AI assistant. Provide clear, concise responses.",
+            "systemPrompt": "",
             "temperature": 0.7,
             "defaultModel": "llama3",
-            "developerMode": True,
-            "agenticCloudMode": True
+            "developerMode": False,
+            "agenticCloudMode": False,
+            "skills": [],
+            "monthlyTokenLimit": 200000,
+            "mcpServers": [],
+            "sidebarWidth": 300,
+            "toolAutomationEnabled": True,
+            "agentModeEnabled": False,
+            "strictPermissionMode": False,
+            "maxAgentLoopDepth": 5,
+            "networkToolEnabled": False,
         }
 
         try:
@@ -297,3 +366,4 @@ async def test_chat_history():
 
 if __name__ == "__main__":
     asyncio.run(test_chat_history())
+

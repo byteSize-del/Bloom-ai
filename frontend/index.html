@@ -31,6 +31,7 @@
             --warning-color: #ff9f0a;
             --error-color: #ff453a;
             --sidebar-width: 300px;
+            --content-max-width: 980px;
             --transition-speed: 0.25s;
             --glass-bg: rgba(10, 10, 11, 0.7);
             --glass-border: rgba(255, 255, 255, 0.08);
@@ -39,18 +40,24 @@
 
         /* Light Theme Variables */
         [data-theme="light"] {
-            --bg-primary: #f5f5f5;
+            --bg-primary: #f4f6fb;
             --bg-secondary: #ffffff;
-            --bg-tertiary: #f0f0f0;
-            --bg-accent: #e8e8e8;
-            --text-primary: #1a1a1a;
-            --text-secondary: #505050;
-            --text-muted: #808080;
-            --border-color: #d0d0d0;
-            --accent-color: #6366f1;
-            --accent-glow: rgba(99, 102, 241, 0.2);
-            --user-bubble: #3b82f6;
-            --ai-bubble: #f3f4f6;
+            --bg-tertiary: #eef1f7;
+            --bg-accent: #e5ebff;
+            --bg-elevated: #ffffff;
+            --text-primary: #161b26;
+            --text-secondary: #4f5a72;
+            --text-muted: #7a8498;
+            --border-color: #cfd7e8;
+            --border-subtle: #dbe2ef;
+            --accent-color: #5d67df;
+            --accent-hover: #4958d4;
+            --accent-glow: rgba(93, 103, 223, 0.2);
+            --accent-gradient: linear-gradient(135deg, #5967e8 0%, #7f56d9 100%);
+            --user-bubble: #dbe7ff;
+            --ai-bubble: #edf1f8;
+            --glass-bg: rgba(247, 249, 255, 0.86);
+            --glass-border: rgba(23, 40, 83, 0.12);
         }
 
         * {
@@ -198,8 +205,8 @@
             align-items: center;
             justify-content: space-between;
             padding: 0 0 0 14px;
-            background: rgba(18, 19, 22, 0.92);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--glass-border);
             backdrop-filter: blur(12px);
             -webkit-app-region: drag;
             user-select: none;
@@ -235,7 +242,7 @@
         .window-menu-item {
             border: none;
             background: transparent;
-            color: #c6c7cb;
+            color: var(--text-secondary);
             font-size: 13px;
             padding: 6px 10px;
             border-radius: 6px;
@@ -244,15 +251,86 @@
         }
 
         .window-menu-item:hover {
-            background: rgba(255, 255, 255, 0.08);
-            color: #f0f1f4;
+            background: var(--bg-accent);
+            color: var(--text-primary);
+        }
+
+        .window-sidebar-toggle-btn {
+            width: 30px;
+            height: 28px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 0;
+            margin-right: 4px;
+            border: 1px solid var(--border-subtle);
+            color: var(--text-primary);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
+            position: relative;
+            overflow: hidden;
+            transition: border-color 0.22s ease, box-shadow 0.22s ease, transform 0.18s ease;
+        }
+
+        .window-sidebar-toggle-btn i {
+            font-size: 12px;
+            transition: transform 0.26s ease;
+        }
+
+        .window-sidebar-toggle-btn .toggle-mark {
+            width: 9px;
+            height: 11px;
+            stroke: currentColor;
+            stroke-width: 1.4;
+            fill: none;
+            opacity: 0.78;
+            transition: opacity 0.22s ease, transform 0.22s ease;
+        }
+
+        .window-sidebar-toggle-btn::after {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            border-radius: 6px;
+            background: radial-gradient(circle at 30% 20%, rgba(124, 133, 224, 0.35), transparent 60%);
+            opacity: 0;
+            transition: opacity 0.24s ease;
+            pointer-events: none;
+        }
+
+        .window-sidebar-toggle-btn:hover {
+            border-color: rgba(124, 133, 224, 0.65);
+            box-shadow: 0 0 0 2px rgba(94, 106, 210, 0.22);
+            transform: translateY(-1px);
+        }
+
+        .window-sidebar-toggle-btn:hover::after {
+            opacity: 1;
+        }
+
+        .window-sidebar-toggle-btn.is-collapsed {
+            border-color: rgba(94, 106, 210, 0.62);
+            box-shadow: 0 0 0 2px rgba(94, 106, 210, 0.25);
+        }
+
+        .window-sidebar-toggle-btn.is-collapsed i {
+            transform: scaleX(-1);
+        }
+
+        .window-sidebar-toggle-btn.is-collapsed .toggle-mark {
+            opacity: 1;
+            transform: translateX(1px);
+        }
+
+        .window-sidebar-toggle-btn:active {
+            transform: translateY(0);
         }
 
         .menu-popover {
             position: fixed;
             min-width: 220px;
-            background: rgba(18, 19, 23, 0.98);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: var(--bg-elevated);
+            border: 1px solid var(--glass-border);
             border-radius: 10px;
             padding: 6px;
             box-shadow: 0 20px 45px rgba(0, 0, 0, 0.4);
@@ -273,7 +351,7 @@
             width: 100%;
             border: none;
             background: transparent;
-            color: #e6e7eb;
+            color: var(--text-primary);
             font-size: 13px;
             line-height: 1;
             text-align: left;
@@ -284,18 +362,18 @@
         }
 
         .menu-item:hover {
-            background: rgba(255, 255, 255, 0.08);
+            background: var(--bg-accent);
         }
 
         .menu-item-shortcut {
-            color: #8d919c;
+            color: var(--text-muted);
             font-size: 12px;
         }
 
         .menu-separator {
             height: 1px;
             margin: 6px 4px;
-            background: rgba(255, 255, 255, 0.08);
+            background: var(--glass-border);
         }
 
         .window-controls {
@@ -309,15 +387,15 @@
             width: 48px;
             border: none;
             background: transparent;
-            color: #c5c7cd;
+            color: var(--text-secondary);
             font-size: 12px;
             cursor: pointer;
             transition: background 0.15s ease, color 0.15s ease;
         }
 
         .window-control-btn:hover {
-            background: rgba(255, 255, 255, 0.08);
-            color: #ffffff;
+            background: var(--bg-accent);
+            color: var(--text-primary);
         }
 
         .window-control-btn.close-btn:hover {
@@ -335,6 +413,76 @@
             flex-direction: column;
             transition: all var(--transition-speed);
             flex-shrink: 0;
+            position: relative;
+        }
+
+        .sidebar-resize-zone {
+            position: absolute;
+            top: 0;
+            right: -5px;
+            width: 10px;
+            height: 100%;
+            cursor: col-resize;
+            z-index: 25;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+        }
+
+        .sidebar-resize-zone::before,
+        .sidebar-resize-zone::after {
+            content: '';
+            position: absolute;
+            right: 1px;
+            width: 12px;
+            height: 12px;
+            border-right: 1px solid rgba(135, 148, 209, 0.55);
+            border-top: 1px solid rgba(135, 148, 209, 0.45);
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .sidebar-resize-zone::before {
+            top: 6px;
+            transform: rotate(45deg);
+        }
+
+        .sidebar-resize-zone::after {
+            bottom: 6px;
+            transform: rotate(135deg);
+        }
+
+        .sidebar-resize-lines {
+            width: 5px;
+            height: 42px;
+            border-radius: 8px;
+            opacity: 0;
+            background:
+                repeating-linear-gradient(to bottom,
+                    rgba(132, 146, 225, 0.56) 0px,
+                    rgba(132, 146, 225, 0.56) 2px,
+                    transparent 2px,
+                    transparent 6px);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+
+        .sidebar:hover .sidebar-resize-lines,
+        .sidebar-resize-zone:hover .sidebar-resize-lines,
+        .sidebar.resizing .sidebar-resize-lines {
+            opacity: 1;
+            transform: scaleY(1.02);
+        }
+
+        .sidebar:hover .sidebar-resize-zone::before,
+        .sidebar:hover .sidebar-resize-zone::after,
+        .sidebar.resizing .sidebar-resize-zone::before,
+        .sidebar.resizing .sidebar-resize-zone::after {
+            opacity: 0.9;
+        }
+
+        .sidebar.collapsed .sidebar-resize-zone {
+            display: none;
         }
 
         .sidebar-header {
@@ -448,6 +596,13 @@
             margin-bottom: 4px;
         }
 
+        .sessions-empty {
+            padding: 12px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
         .session-item {
             display: flex;
             align-items: center;
@@ -531,6 +686,11 @@
         }
 
         .session-delete {
+            border: none;
+            background: transparent;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             color: var(--text-muted);
             padding: 6px;
             cursor: pointer;
@@ -646,8 +806,9 @@
             flex: 1;
             display: flex;
             flex-direction: column;
-            background: linear-gradient(180deg, rgba(11, 11, 14, 0.96) 0%, rgba(4, 4, 5, 0.98) 100%);
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
             position: relative;
+            min-width: 0;
         }
 
         .main-content::before {
@@ -664,20 +825,39 @@
         .chat-header {
             padding: 20px 30px;
             border-bottom: 1px solid var(--glass-border);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            background: rgba(3, 3, 3, 0.72);
+            background: var(--bg-secondary);
             backdrop-filter: blur(20px);
             position: sticky;
             top: 0;
             z-index: 10;
         }
 
+        .chat-header-inner {
+            width: 100%;
+            max-width: var(--content-max-width);
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .chat-header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
         .chat-title {
             display: flex;
             align-items: center;
             gap: 12px;
+        }
+
+        .chat-heading {
+            font-size: 18px;
+            font-weight: 600;
+            line-height: 1.2;
         }
 
         .current-model {
@@ -748,24 +928,239 @@
             border-color: var(--accent-color);
         }
 
-        /* Settings Panel */
-        .settings-panel {
-            position: absolute;
-            top: 75px;
-            right: 20px;
-            width: 360px;
-            background: var(--bg-elevated);
-            border: 1px solid var(--glass-border);
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-            padding: 24px;
-            display: none;
-            z-index: 100;
-            animation: slideDown 0.3s;
+        .settings-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
-        .settings-panel.open {
+        /* Settings Panel */
+        .settings-panel {
+            position: relative;
+            width: 100%;
+            background: var(--bg-elevated);
+            border: none;
+            border-top: 1px solid var(--glass-border);
+            border-radius: 0;
+            box-shadow: none;
+            padding: 20px 24px 26px;
+            display: none;
+            z-index: 2;
+            animation: slideDown 0.3s;
+            max-height: none;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            scrollbar-gutter: stable;
+        }
+
+        .main-content.settings-mode .settings-panel {
             display: block;
+        }
+
+        .main-content.settings-mode .chat-area,
+        .main-content.settings-mode .input-area {
+            display: none;
+        }
+
+        .settings-shell {
+            max-width: var(--content-max-width);
+            margin: 0 auto;
+        }
+
+        .settings-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .settings-top h3 {
+            margin-bottom: 0;
+        }
+
+        .settings-close-btn {
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            border-radius: 10px;
+            width: 34px;
+            height: 34px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .settings-close-btn:hover {
+            color: var(--text-primary);
+            border-color: var(--accent-color);
+            background: var(--bg-accent);
+        }
+
+        .settings-grid {
+            display: grid;
+            gap: 12px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .settings-grid .setting-row {
+            margin-bottom: 0;
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            padding: 12px;
+            background: var(--bg-tertiary);
+        }
+
+        .settings-grid .setting-row.section-span {
+            grid-column: 1 / -1;
+        }
+
+        .usage-cards {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .usage-card {
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            background: var(--bg-secondary);
+            padding: 10px;
+        }
+
+        .runtime-cards .usage-value {
+            font-size: 14px;
+            line-height: 1.45;
+            word-break: break-word;
+        }
+
+        .usage-label {
+            color: var(--text-muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .usage-value {
+            margin-top: 4px;
+            color: var(--text-primary);
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .usage-progress {
+            height: 8px;
+            border-radius: 999px;
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-secondary);
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .usage-progress span {
+            display: block;
+            width: 0%;
+            height: 100%;
+            background: var(--accent-gradient);
+            transition: width 0.24s ease;
+        }
+
+        .usage-note {
+            margin-top: 8px;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .path-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .path-value {
+            border: 1px solid var(--border-subtle);
+            border-radius: 9px;
+            background: var(--bg-secondary);
+            color: var(--text-muted);
+            font-size: 12px;
+            padding: 10px 11px;
+            word-break: break-all;
+        }
+
+        .small-btn {
+            border: 1px solid var(--border-subtle);
+            border-radius: 9px;
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 600;
+            padding: 9px 11px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .small-btn:hover {
+            color: var(--accent-color);
+            border-color: var(--accent-color);
+            background: var(--bg-accent);
+        }
+
+        .mcp-list {
+            max-height: 180px;
+            overflow-y: auto;
+            display: grid;
+            gap: 8px;
+            padding-right: 2px;
+            margin-bottom: 10px;
+        }
+
+        .mcp-empty {
+            color: var(--text-muted);
+            font-size: 12px;
+            padding: 4px 2px;
+        }
+
+        .mcp-item {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 10px;
+            align-items: center;
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            background: var(--bg-secondary);
+            padding: 9px 10px;
+        }
+
+        .mcp-meta {
+            min-width: 0;
+        }
+
+        .mcp-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .mcp-url,
+        .mcp-desc {
+            font-size: 11px;
+            color: var(--text-muted);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .settings-panel::-webkit-scrollbar {
+            width: 7px;
+        }
+
+        .settings-panel::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 999px;
         }
 
         @keyframes slideDown {
@@ -923,6 +1318,165 @@
             transform: translateX(16px);
         }
 
+        .coming-soon-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .coming-soon-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .coming-soon-badge {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #f8f9ff;
+            background: rgba(94, 106, 210, 0.38);
+            border: 1px solid rgba(94, 106, 210, 0.62);
+            border-radius: 999px;
+            padding: 4px 8px;
+        }
+
+        .skills-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 170px;
+            overflow-y: auto;
+            padding-right: 2px;
+        }
+
+        .skills-empty {
+            font-size: 12px;
+            color: var(--text-muted);
+            padding: 8px 2px;
+        }
+
+        .skill-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-tertiary);
+            border-radius: 10px;
+            padding: 9px 10px;
+        }
+
+        .skill-checkbox {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent-color);
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .skill-meta {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .skill-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .skill-preview {
+            font-size: 11px;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-top: 2px;
+        }
+
+        .skill-delete {
+            border: 1px solid var(--border-subtle);
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            width: 26px;
+            height: 26px;
+            border-radius: 8px;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .skill-delete:hover {
+            color: var(--error-color);
+            border-color: rgba(255, 69, 58, 0.5);
+            background: rgba(255, 69, 58, 0.08);
+        }
+
+        .skill-creator {
+            margin-top: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .skill-input,
+        .skill-textarea {
+            width: 100%;
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            padding: 10px 12px;
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .skill-input:focus,
+        .skill-textarea:focus {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.18);
+        }
+
+        .skill-textarea {
+            min-height: 92px;
+            resize: vertical;
+        }
+
+        .skill-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .skill-action-btn {
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            border-radius: 10px;
+            padding: 8px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .skill-action-btn:hover {
+            border-color: var(--accent-color);
+            color: var(--accent-color);
+            background: var(--bg-accent);
+        }
+
         .theme-toggle {
             display: flex;
             gap: 10px;
@@ -943,6 +1497,11 @@
             align-items: center;
             justify-content: center;
             gap: 8px;
+            color: var(--text-primary);
+        }
+
+        .theme-option i {
+            color: var(--text-secondary);
         }
 
         .theme-option:hover {
@@ -957,6 +1516,176 @@
             box-shadow: 0 4px 15px rgba(94, 106, 210, 0.3);
         }
 
+        .theme-option.active i {
+            color: #ffffff;
+        }
+
+        [data-theme="dark"] .theme-option[data-theme="light"] {
+            color: #d6dcf7;
+            border-color: rgba(146, 158, 212, 0.36);
+        }
+
+        .chat-header-badges {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .agent-mode-badge {
+            border-radius: 999px;
+            padding: 7px 12px;
+            border: 1px solid rgba(168, 85, 247, 0.34);
+            background: rgba(120, 80, 214, 0.16);
+            color: #d8c8ff;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .permission-control-grid {
+            display: grid;
+            gap: 10px;
+        }
+
+        .permission-actions-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .permission-session-list {
+            display: grid;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .permission-empty {
+            font-size: 12px;
+            color: var(--text-muted);
+            padding: 8px 2px;
+        }
+
+        .permission-grant-item {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-secondary);
+        }
+
+        .permission-grant-copy {
+            min-width: 0;
+        }
+
+        .permission-grant-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-primary);
+            text-transform: capitalize;
+        }
+
+        .permission-grant-meta {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 3px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .agent-command-strip {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .agent-chip {
+            border: 1px solid rgba(94, 106, 210, 0.26);
+            background: rgba(94, 106, 210, 0.1);
+            color: var(--text-primary);
+            border-radius: 999px;
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .agent-chip:hover {
+            transform: translateY(-1px);
+            border-color: rgba(94, 106, 210, 0.62);
+            background: rgba(94, 106, 210, 0.18);
+        }
+
+        .thinking-trace-message {
+            opacity: 0.95;
+        }
+
+        .thinking-trace {
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-tertiary);
+            border-radius: 14px;
+            padding: 10px 12px;
+        }
+
+        .thinking-trace summary {
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .thinking-trace-copy {
+            margin-top: 8px;
+            color: var(--text-primary);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .tool-proposal-card {
+            border-color: rgba(255, 159, 10, 0.36);
+            box-shadow: 0 18px 36px rgba(0, 0, 0, 0.18);
+        }
+
+        .tool-countdown-bar {
+            height: 6px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-subtle);
+            margin: 10px 0 12px;
+        }
+
+        .tool-countdown-bar span {
+            display: block;
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(90deg, #ffb347, #ff7f50);
+        }
+
+        .tool-edit-panel {
+            margin-bottom: 12px;
+        }
+
+        .tool-result-card {
+            border: 1px solid rgba(52, 199, 89, 0.24);
+            background: linear-gradient(180deg, rgba(52, 199, 89, 0.04), transparent 70%), var(--ai-bubble);
+        }
+
+        .tool-safety-card {
+            border: 1px solid rgba(255, 69, 58, 0.3);
+            background: linear-gradient(180deg, rgba(255, 69, 58, 0.05), transparent 70%), var(--ai-bubble);
+        }
+
         /* Chat Area */
         .chat-area {
             flex: 1;
@@ -965,6 +1694,7 @@
             scroll-behavior: smooth;
             position: relative;
             z-index: 1;
+            min-width: 0;
         }
 
         .welcome-message {
@@ -1016,6 +1746,130 @@
             color: var(--text-secondary);
         }
 
+        .welcome-setup {
+            margin-top: 28px;
+            width: min(100%, 920px);
+            display: grid;
+            gap: 14px;
+        }
+
+        .setup-guide {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .setup-card {
+            text-align: left;
+            border: 1px solid var(--border-subtle);
+            border-radius: 16px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 85%), var(--bg-tertiary);
+            padding: 16px;
+            min-height: 132px;
+            box-shadow: 0 14px 28px rgba(0, 0, 0, 0.18);
+        }
+
+        .setup-step {
+            width: 28px;
+            height: 28px;
+            border-radius: 9px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(94, 106, 210, 0.18);
+            color: #dfe4ff;
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .setup-card h4 {
+            margin: 0 0 8px;
+            font-size: 15px;
+            color: var(--text-primary);
+        }
+
+        .setup-card p {
+            margin: 0;
+            color: var(--text-secondary);
+            font-size: 13px;
+            line-height: 1.65;
+        }
+
+        .setup-actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .ghost-btn {
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border-radius: 10px;
+            padding: 10px 14px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .ghost-btn:hover {
+            border-color: var(--accent-color);
+            background: var(--bg-accent);
+            color: var(--accent-color);
+        }
+
+        .prompt-library {
+            margin-top: 6px;
+            display: grid;
+            gap: 10px;
+        }
+
+        .prompt-library-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            color: var(--text-muted);
+        }
+
+        .prompt-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .prompt-card {
+            text-align: left;
+            border: 1px solid var(--border-subtle);
+            border-radius: 14px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            padding: 14px;
+            cursor: pointer;
+            transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .prompt-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--accent-color);
+            box-shadow: 0 12px 24px rgba(94, 106, 210, 0.18);
+        }
+
+        .prompt-card strong {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+
+        .prompt-card span {
+            display: block;
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.55;
+        }
+
         .message-container {
             display: flex;
             flex-direction: column;
@@ -1026,7 +1880,7 @@
         .message {
             display: flex;
             gap: 16px;
-            max-width: 960px;
+            max-width: var(--content-max-width);
             margin: 0 auto;
             width: 100%;
             animation: messageEnter 0.3s;
@@ -1069,6 +1923,7 @@
         .message-content {
             flex: 1;
             max-width: calc(100% - 52px);
+            min-width: 0;
         }
 
         .message-header {
@@ -1099,6 +1954,8 @@
             font-size: 15px;
             line-height: 1.72;
             box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+            word-break: break-word;
+            overflow-wrap: anywhere;
         }
 
         .user-message {
@@ -1157,6 +2014,83 @@
             background: var(--bg-accent);
             color: var(--text-primary);
             border-color: var(--accent-color);
+        }
+
+        .message-action-btn:disabled {
+            opacity: 0.55;
+            cursor: wait;
+        }
+
+        .tool-approval-card {
+            display: grid;
+            gap: 12px;
+        }
+
+        .tool-approval-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .tool-approval-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 700;
+        }
+
+        .tool-risk-pill {
+            border: 1px solid rgba(255, 159, 67, 0.32);
+            background: rgba(255, 159, 67, 0.14);
+            color: #ffd4a3;
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+        }
+
+        .tool-approval-summary {
+            color: var(--text-primary);
+            line-height: 1.65;
+        }
+
+        .tool-preview {
+            margin: 0;
+            padding: 12px 14px;
+            border-radius: 12px;
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            overflow-x: auto;
+            max-height: 240px;
+        }
+
+        .tool-approval-note {
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .tool-approval-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .tool-approve-btn {
+            background: var(--accent-gradient);
+            color: white;
+            border-color: transparent;
+        }
+
+        .tool-approve-btn:hover:not(:disabled) {
+            color: white;
+            border-color: transparent;
+            filter: brightness(1.05);
         }
 
         /* Typing Indicator */
@@ -1273,7 +2207,7 @@
         }
 
         .input-container {
-            max-width: 900px;
+            max-width: var(--content-max-width);
             margin: 0 auto;
             position: relative;
         }
@@ -1281,8 +2215,8 @@
         .input-wrapper {
             display: flex;
             align-items: flex-end;
-            background: linear-gradient(180deg, rgba(9, 9, 11, 0.9) 0%, rgba(7, 7, 9, 0.95) 100%);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            border: 1px solid var(--glass-border);
             border-radius: 20px;
             padding: 10px 10px 10px 12px;
             transition: all 0.3s;
@@ -1319,6 +2253,8 @@
             align-items: center;
             gap: 6px;
             padding: 6px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
         }
 
         .action-btn {
@@ -1593,6 +2529,89 @@
             position: relative;
         }
 
+        .code-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 10px 12px 0;
+            color: var(--text-muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .code-language {
+            font-weight: 700;
+        }
+
+        .token-comment {
+            color: #6f7c91;
+        }
+
+        .token-keyword {
+            color: #ff8a65;
+        }
+
+        .token-string {
+            color: #8bd17c;
+        }
+
+        .token-number {
+            color: #ffd166;
+        }
+
+        .token-function {
+            color: #7cc7ff;
+        }
+
+        .token-operator {
+            color: #d1b3ff;
+        }
+
+        .status-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 18px;
+            border-top: 1px solid var(--glass-border);
+            background: rgba(9, 11, 16, 0.92);
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+
+        .status-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            flex-wrap: wrap;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-tertiary);
+            border-radius: 999px;
+            padding: 6px 10px;
+            white-space: nowrap;
+        }
+
+        .status-pill strong {
+            color: var(--text-primary);
+        }
+
+        .status-ok {
+            color: #9be3bb;
+        }
+
+        .status-warn {
+            color: #ffd27a;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .window-menu {
@@ -1615,6 +2634,49 @@
             .input-area {
                 padding: 15px;
             }
+
+            .chat-header {
+                padding: 16px 15px;
+            }
+
+            .chat-area {
+                padding: 16px 15px;
+            }
+
+            .chat-header-inner {
+                gap: 8px;
+            }
+
+            #current-model-display {
+                max-width: 150px;
+            }
+
+            .settings-panel {
+                padding: 16px;
+            }
+
+            .settings-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .usage-cards {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .path-row {
+                grid-template-columns: 1fr;
+            }
+
+            .setup-guide,
+            .prompt-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .status-bar {
+                padding: 10px 14px;
+                flex-direction: column;
+                align-items: flex-start;
+            }
         }
     </style>
 </head>
@@ -1634,6 +2696,12 @@
                 <span>Bloom Desktop</span>
             </div>
             <div class="window-menu" id="window-menu">
+                <button class="window-menu-item window-sidebar-toggle-btn" id="sidebar-toggle-btn" title="Toggle Sidebar" aria-label="Toggle sidebar" aria-pressed="false" type="button">
+                    <i class="fa-solid fa-panel-left"></i>
+                    <svg class="toggle-mark" viewBox="0 0 10 12" aria-hidden="true">
+                        <path d="M2 1.5v9M5 1.5v9M8 3.2v5.6" stroke-linecap="round"></path>
+                    </svg>
+                </button>
                 <button class="window-menu-item" data-menu="file" type="button">File</button>
                 <button class="window-menu-item" data-menu="edit" type="button">Edit</button>
                 <button class="window-menu-item" data-menu="view" type="button">View</button>
@@ -1686,77 +2754,210 @@
                     </select>
                 </div>
             </div>
+            <div class="sidebar-resize-zone" id="sidebar-resize-zone" aria-hidden="true">
+                <span class="sidebar-resize-lines"></span>
+            </div>
         </aside>
 
         <!-- Main Content -->
         <main class="main-content">
             <!-- Header -->
             <header class="chat-header">
-                <div class="chat-title">
-                    <h2 style="font-size: 18px; font-weight: 600;">Chat</h2>
-                    <div class="current-model">
-                        <i class="fa-solid fa-microchip"></i>
-                        <span id="current-model-display">Select a model</span>
+                <div class="chat-header-inner">
+                    <div class="chat-header-left">
+                        <div class="chat-title">
+                            <h2 class="chat-heading">Chat</h2>
+                            <div class="chat-header-badges">
+                                <div class="current-model">
+                                    <i class="fa-solid fa-microchip"></i>
+                                    <span id="current-model-display">Select a model</span>
+                                </div>
+                                <span class="agent-mode-badge" id="agent-mode-badge" hidden>Agent Mode</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-actions">
+                        <button class="settings-toggle" id="settings-toggle" title="Settings" aria-controls="settings-panel" aria-expanded="false">
+                            <i class="fa-solid fa-gear"></i>
+                        </button>
                     </div>
                 </div>
-
-                <button class="settings-toggle" id="settings-toggle" title="Settings">
-                    <i class="fa-solid fa-gear"></i>
-                </button>
             </header>
 
             <!-- Settings Panel -->
             <div class="settings-panel" id="settings-panel">
-                <h3><i class="fa-solid fa-sliders"></i> Settings</h3>
+                <div class="settings-shell">
+                    <div class="settings-top">
+                        <h3><i class="fa-solid fa-sliders"></i> Settings Dashboard</h3>
+                        <button class="settings-close-btn" id="settings-close-btn" title="Close settings">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
 
-                <div class="setting-row">
-                    <label class="setting-label">Theme</label>
-                    <div class="theme-toggle">
-                        <div class="theme-option active" data-theme="dark">
-                            <i class="fa-solid fa-moon"></i> Dark
+                    <div class="settings-grid">
+                        <div class="setting-row">
+                            <label class="setting-label">Account & Usage</label>
+                            <div class="usage-cards">
+                                <div class="usage-card">
+                                    <div class="usage-label">Account</div>
+                                    <div class="usage-value" id="settings-account-name">-</div>
+                                </div>
+                                <div class="usage-card">
+                                    <div class="usage-label">Plan</div>
+                                    <div class="usage-value" id="settings-plan">-</div>
+                                </div>
+                                <div class="usage-card">
+                                    <div class="usage-label">Token Limit</div>
+                                    <div class="usage-value" id="settings-token-limit">-</div>
+                                </div>
+                                <div class="usage-card">
+                                    <div class="usage-label">Tokens Used</div>
+                                    <div class="usage-value" id="settings-token-used">-</div>
+                                </div>
+                                <div class="usage-card">
+                                    <div class="usage-label">Sessions</div>
+                                    <div class="usage-value" id="settings-session-count">-</div>
+                                </div>
+                                <div class="usage-card">
+                                    <div class="usage-label">Messages</div>
+                                    <div class="usage-value" id="settings-message-count">-</div>
+                                </div>
+                            </div>
+                            <div class="usage-progress"><span id="settings-usage-progress"></span></div>
+                            <div class="usage-note" id="settings-usage-footnote">-</div>
+                            <label class="setting-label" for="monthly-token-limit" style="margin-top:10px;">Monthly Token Limit</label>
+                            <input class="skill-input" id="monthly-token-limit" type="number" min="1000" step="1000" value="200000">
                         </div>
-                        <div class="theme-option" data-theme="light">
-                            <i class="fa-solid fa-sun"></i> Light
+
+                        <div class="setting-row">
+                            <label class="setting-label">Paths & Limits</label>
+                            <div class="path-row">
+                                <div class="path-value" id="settings-models-path">-</div>
+                                <button class="small-btn" id="open-models-path-btn" type="button">Open Models</button>
+                            </div>
+                            <div class="path-row">
+                                <div class="path-value" id="settings-sessions-path">-</div>
+                                <button class="small-btn" id="open-sessions-path-btn" type="button">Open Sessions</button>
+                            </div>
+                            <label class="setting-label">Default Model</label>
+                            <select class="model-select" id="default-model-select"></select>
+                            <div class="usage-note" id="settings-message-limit-note">Message limit: 4000 characters</div>
+                        </div>
+
+                        <div class="setting-row">
+                            <label class="setting-label">Runtime & Hardware</label>
+                            <div class="usage-cards runtime-cards">
+                                <div class="usage-card">
+                                    <div class="usage-label">Runtime</div>
+                                    <div class="usage-value" id="settings-runtime-status">Checking...</div>
+                                </div>
+                                <div class="usage-card">
+                                    <div class="usage-label">Hardware</div>
+                                    <div class="usage-value" id="settings-hardware-status">Detecting...</div>
+                                </div>
+                                <div class="usage-card">
+                                    <div class="usage-label">Platform</div>
+                                    <div class="usage-value" id="settings-platform-status">-</div>
+                                </div>
+                            </div>
+                            <div class="usage-note">Bloom checks your runtime and hardware here so users can quickly tell whether local AI is ready.</div>
+                        </div>
+
+                        <div class="setting-row">
+                            <label class="setting-label">Theme</label>
+                            <div class="theme-toggle">
+                                <div class="theme-option active" data-theme="dark">
+                                    <i class="fa-solid fa-moon"></i> Dark
+                                </div>
+                                <div class="theme-option" data-theme="light">
+                                    <i class="fa-solid fa-sun"></i> Light
+                                </div>
+                            </div>
+
+                            <label class="setting-label" style="margin-top:12px;">Temperature <span class="temperature-value"
+                                    id="temp-value">0.7</span></label>
+                            <input type="range" id="temperature-slider" min="0" max="2" step="0.1" value="0.7">
+
+                            <label class="setting-label" style="margin-top:12px;">System Prompt</label>
+                            <textarea id="system-prompt-input" placeholder="Enter custom system prompt..."></textarea>
+                        </div>
+
+                        <div class="setting-row">
+                            <label class="setting-label">Assistant Modes</label>
+                            <div class="coming-soon-list">
+                                <div class="coming-soon-item">
+                                    <span>Developer Assistant</span>
+                                    <span class="coming-soon-badge">Coming Soon</span>
+                                </div>
+                                <div class="coming-soon-item">
+                                    <span>Agentic Cloud Boost</span>
+                                    <span class="coming-soon-badge">Coming Soon</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-row section-span">
+                            <label class="setting-label">Permissions & Agent Control</label>
+                            <div class="permission-control-grid">
+                                <div class="switch-row">
+                                    <span class="switch-label">Enable Agent Mode for agentic models</span>
+                                    <input class="switch-input" id="agent-mode-toggle" type="checkbox">
+                                </div>
+                                <div class="switch-row">
+                                    <span class="switch-label">Strict Mode: ask before Tier 1 actions</span>
+                                    <input class="switch-input" id="strict-permission-toggle" type="checkbox">
+                                </div>
+                                <div class="switch-row">
+                                    <span class="switch-label">Allow browser link actions from Agent Mode</span>
+                                    <input class="switch-input" id="network-tool-toggle" type="checkbox">
+                                </div>
+                                <label class="setting-label">Max Agent Loop Depth <span class="temperature-value" id="agent-loop-depth-value">5</span></label>
+                                <input type="range" id="agent-loop-depth-slider" min="1" max="10" step="1" value="5">
+                                <div class="usage-note">Bloom will never persist session permission grants to disk. They clear when the app closes or when you reset them here.</div>
+                                <div class="permission-actions-row">
+                                    <button class="small-btn" id="open-audit-log-btn" type="button">Open Audit Log</button>
+                                    <button class="small-btn" id="reset-permissions-btn" type="button">Reset All Permissions</button>
+                                </div>
+                                <div class="permission-session-list" id="permission-session-list"></div>
+                            </div>
+                        </div>
+
+                        <div class="setting-row">
+                            <label class="setting-label">Skills</label>
+                            <div class="skills-list" id="skills-list"></div>
+                            <div class="skill-creator">
+                                <input type="text" class="skill-input" id="skill-name-input" placeholder="Skill name (e.g. API Reviewer)">
+                                <textarea class="skill-textarea" id="skill-content-input"
+                                    placeholder="Skill instruction... This will be injected into the system prompt when enabled."></textarea>
+                                <div class="skill-actions">
+                                    <button class="skill-action-btn" id="add-skill-btn" type="button">
+                                        <i class="fa-solid fa-plus"></i> Add Skill
+                                    </button>
+                                    <button class="skill-action-btn" id="upload-skill-btn" type="button">
+                                        <i class="fa-solid fa-upload"></i> Upload Skill
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-row section-span">
+                            <label class="setting-label">MCP Servers</label>
+                            <div class="coming-soon-list">
+                                <div class="coming-soon-item">
+                                    <span>MCP Server Integration</span>
+                                    <span class="coming-soon-badge">Coming Soon</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-row section-span">
+                            <label class="setting-label">Danger Zone</label>
+                            <button class="send-btn" style="background: var(--error-color);" id="clear-history-btn">
+                                <i class="fa-solid fa-trash"></i> Clear All History
+                            </button>
                         </div>
                     </div>
-                </div>
-
-                <div class="setting-row">
-                    <label class="setting-label">System Prompt</label>
-                    <textarea id="system-prompt-input" placeholder="Enter custom system prompt..."></textarea>
-                </div>
-
-                <div class="setting-row">
-                    <label class="setting-label">Temperature <span class="temperature-value"
-                            id="temp-value">0.7</span></label>
-                    <input type="range" id="temperature-slider" min="0" max="2" step="0.1" value="0.7">
-                </div>
-
-                <div class="setting-row">
-                    <label class="setting-label">Default Model</label>
-                    <select class="model-select" id="default-model-select"></select>
-                </div>
-
-                <div class="setting-row">
-                    <label class="setting-label">Assistant Modes</label>
-                    <div class="switch-row">
-                        <span class="switch-label">Developer Assistant</span>
-                        <input type="checkbox" class="switch-input" id="developer-mode-toggle" checked>
-                    </div>
-                </div>
-
-                <div class="setting-row">
-                    <div class="switch-row">
-                        <span class="switch-label">Agentic Cloud Boost</span>
-                        <input type="checkbox" class="switch-input" id="agentic-cloud-toggle" checked>
-                    </div>
-                </div>
-
-                <div class="setting-row">
-                    <label class="setting-label">Danger Zone</label>
-                    <button class="send-btn" style="background: var(--error-color);" id="clear-history-btn">
-                        <i class="fa-solid fa-trash"></i> Clear All History
-                    </button>
                 </div>
             </div>
 
@@ -1766,10 +2967,66 @@
                     <div class="welcome-icon">
                         <i class="fa-solid fa-spa"></i>
                     </div>
-                    <div class="welcome-title">Welcome to Bloom</div>
-                    <div class="welcome-subtitle">
-                        Your premium offline AI chat experience.<br>
-                        Select a model and start your conversation.
+                <div class="welcome-title">Welcome to Bloom</div>
+                <div class="welcome-subtitle">
+                        Bloom runs local and cloud-friendly AI in one focused workspace.<br>
+                        We help you set up the runtime, choose the right model, and start with useful prompts.
+                    </div>
+
+                    <div class="welcome-setup">
+                        <div class="setup-guide">
+                            <div class="setup-card">
+                                <div class="setup-step">1</div>
+                                <h4>Install the local AI engine</h4>
+                                <p>Bloom uses Ollama to run local models on your computer. If you are new, start there first.</p>
+                            </div>
+                            <div class="setup-card">
+                                <div class="setup-step">2</div>
+                                <h4>Pick a model by use case</h4>
+                                <p>We sort models into chat, coding, fast, vision, and cloud groups so the picker feels less technical.</p>
+                            </div>
+                            <div class="setup-card">
+                                <div class="setup-step">3</div>
+                                <h4>Start with a template</h4>
+                                <p>Use the prompt library below to debug code, explain concepts, summarize text, or generate tests.</p>
+                            </div>
+                        </div>
+
+                        <div class="setup-actions">
+                            <button class="ghost-btn" id="welcome-install-ollama-btn" type="button">Install Ollama</button>
+                            <button class="ghost-btn" id="welcome-refresh-models-btn" type="button">Refresh Models</button>
+                            <button class="ghost-btn" id="welcome-open-settings-btn" type="button">Open Setup Settings</button>
+                        </div>
+
+                        <div class="prompt-library">
+                            <div class="prompt-library-title">Starter Prompts</div>
+                            <div class="prompt-grid" id="prompt-library">
+                                <button class="prompt-card" type="button" data-prompt="Debug this code and explain the bug, root cause, and the cleanest fix.">
+                                    <strong>Debug This Code</strong>
+                                    <span>Find the bug, explain the cause, and suggest the best fix.</span>
+                                </button>
+                                <button class="prompt-card" type="button" data-prompt="Summarize this in simple terms, then list the key takeaways and next steps.">
+                                    <strong>Summarize Clearly</strong>
+                                    <span>Turn long content into a clean summary with key actions.</span>
+                                </button>
+                                <button class="prompt-card" type="button" data-prompt="Write unit tests for this code. Cover edge cases and explain why each test matters.">
+                                    <strong>Write Unit Tests</strong>
+                                    <span>Generate practical tests with edge cases and reasoning.</span>
+                                </button>
+                                <button class="prompt-card" type="button" data-prompt="Explain this concept to a beginner first, then to an intermediate developer with examples.">
+                                    <strong>Explain a Concept</strong>
+                                    <span>Get both beginner and intermediate explanations in one answer.</span>
+                                </button>
+                                <button class="prompt-card" type="button" data-prompt="Refactor this function for readability and performance, and explain the tradeoffs.">
+                                    <strong>Refactor This</strong>
+                                    <span>Improve code quality while keeping behavior intact.</span>
+                                </button>
+                                <button class="prompt-card" type="button" data-prompt="Create a step-by-step implementation plan and then generate the first version of the code.">
+                                    <strong>Plan and Build</strong>
+                                    <span>Great when you want Bloom to structure the work before coding.</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -1779,6 +3036,12 @@
             <!-- Input Area -->
             <div class="input-area">
                 <div class="input-container">
+                    <div class="agent-command-strip" id="agent-command-strip" hidden>
+                        <button class="agent-chip" type="button" data-agent-prompt="Inspect this folder path, tell me what is inside, and only propose the next safe action you need.">Inspect Folder</button>
+                        <button class="agent-chip" type="button" data-agent-prompt="Read this file, summarize what matters, and propose the safest edit you recommend.">Review File</button>
+                        <button class="agent-chip" type="button" data-agent-prompt="Create the requested script or file, explain what you want to write, and ask for approval before changing anything.">Create Script</button>
+                        <button class="agent-chip" type="button" data-agent-prompt="Check system info, explain whether Bloom is using GPU or CPU, and tell me the next best model choice.">Check Hardware</button>
+                    </div>
                     <div class="input-wrapper">
                         <textarea class="input-textarea" id="chat-input"
                             placeholder="Type a message... (Shift+Enter for new line)" rows="1"></textarea>
@@ -1804,6 +3067,16 @@
                     </div>
                 </div>
             </div>
+            <div class="status-bar">
+                <div class="status-group">
+                    <span class="status-pill" id="status-runtime-pill"><i class="fa-solid fa-circle-notch"></i> <strong>Runtime:</strong> <span id="status-runtime">Checking...</span></span>
+                    <span class="status-pill" id="status-hardware-pill"><i class="fa-solid fa-microchip"></i> <strong>Hardware:</strong> <span id="status-hardware">Detecting...</span></span>
+                </div>
+                <div class="status-group">
+                    <span class="status-pill"><i class="fa-solid fa-cube"></i> <strong>Model:</strong> <span id="status-model">Not selected</span></span>
+                    <span class="status-pill"><i class="fa-solid fa-gauge-high"></i> <strong>Speed:</strong> <span id="status-speed">Idle</span></span>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -1813,3 +3086,6 @@
 
 </html>
  
+
+
+
