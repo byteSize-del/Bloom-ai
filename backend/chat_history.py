@@ -2,6 +2,13 @@
 Offline AI Chat - Chat History Manager
 Handles saving and loading chat sessions to/from JSON files.
 """
+import json
+import uuid
+import re
+from datetime import datetime, timezone
+from typing import List, Dict, Any, Optional
+# from pathlib import Path # Removed as not directly used
+# import asyncio # Removed as only used in test block
 
 import os
 import json
@@ -9,10 +16,8 @@ import uuid
 import re
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
-from pathlib import Path
-import asyncio
-
-
+# from pathlib import Path # Removed as not directly used
+# import asyncio # Removed as only used in test block
 class ChatHistoryManager:
     """Manages chat session persistence and history."""
 
@@ -309,18 +314,17 @@ class ChatHistoryManager:
             "temperature": 0.7,
             "defaultModel": "llama3",
             "developerMode": False,
-            "agenticCloudMode": False,
-            "skills": [],
+            # "agenticCloudMode": False, # Removed for simpler chatbot
+            # "skills": [], # Removed for simpler chatbot
             "monthlyTokenLimit": 200000,
-            "mcpServers": [],
+            # "mcpServers": [], # Removed for simpler chatbot
             "sidebarWidth": 300,
-            "toolAutomationEnabled": True,
-            "agentModeEnabled": False,
-            "strictPermissionMode": False,
-            "maxAgentLoopDepth": 5,
-            "networkToolEnabled": False,
+            # "toolAutomationEnabled": True, # Removed for simpler chatbot
+            # "agentModeEnabled": False, # Removed for simpler chatbot
+            # "strictPermissionMode": False, # Removed for simpler chatbot
+            # "maxAgentLoopDepth": 5, # Removed for simpler chatbot
+            # "networkToolEnabled": False, # Removed for simpler chatbot
         }
-
         try:
             if os.path.exists(self.settings_file):
                 with open(self.settings_file, "r", encoding="utf-8") as f:
@@ -365,5 +369,6 @@ async def test_chat_history():
 
 
 if __name__ == "__main__":
+    import asyncio # Re-add asyncio for the test block only
     asyncio.run(test_chat_history())
 

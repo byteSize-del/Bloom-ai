@@ -66,9 +66,10 @@ class ChatRequest(BaseModel):
     history: List[Dict[str, str]] = Field(default_factory=list)
     temperature: Optional[float] = 0.7
     system_prompt: Optional[str] = ""
-    session_id: Optional[str] = None
 
 
+
+    # session_id: Optional[str] = None # Removed as it's not directly used in the chat logic
 class SessionRequest(BaseModel):
     title: Optional[str] = None
     model: str
@@ -81,7 +82,7 @@ class SettingsRequest(BaseModel):
     temperature: float = 0.7
     defaultModel: str = "llama3"
     developerMode: bool = False
-    skills: List[Dict[str, Any]] = Field(default_factory=list)
+    # skills: List[Dict[str, Any]] = Field(default_factory=list) # Removed for simpler chatbot
     monthlyTokenLimit: int = 200000
     sidebarWidth: int = 300
 
@@ -286,3 +287,4 @@ if __name__ == "__main__":
         reload=True,
         log_level="info",
     )
+
