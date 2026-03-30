@@ -70,6 +70,93 @@ function resolvePythonExecutable(isDev) {
   return process.platform === 'win32' ? 'python' : 'python3';
 }
 
+function parsePyVenvConfig(venvRoot) {
+  try {
+    const cfgPath = path.join(venvRoot, 'pyvenv.cfg');
+    if (!fs.existsSync(cfgPath)) {
+      return {};
+    }
+
+    const raw = fs.readFileSync(cfgPath, 'utf8');
+    return raw.split(/\r?\n/).reduce((acc, line) => {
+      const index = line.indexOf('=');
+      if (index === -1) return acc;
+      const key = line.slice(0, index).trim();
+      const value = line.slice(index + 1).trim();
+      if (key) {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+  } catch (error) {
+    console.warn('Failed to parse pyvenv.cfg:', error.message);
+    return {};
+  }
+}
+
+function buildPythonLaunchCandidates(isDev, backendPath) {
+  const venvRoot = isDev
+    ? path.join(__dirname, '.venv')
+    : path.join(process.resourcesPath, 'venv');
+  const sitePackagesPath = process.platform === 'win32'
+    ? path.join(venvRoot, 'Lib', 'site-packages')
+    : path.join(venvRoot, 'lib', 'python3.12', 'site-packages');
+  const bundledPython = resolvePythonExecutable(isDev);
+  const pyvenv = parsePyVenvConfig(venvRoot);
+  const existingPythonPath = process.env.PYTHONPATH
+    ? `${backendPath}${path.delimiter}${sitePackagesPath}${path.delimiter}${process.env.PYTHONPATH}`
+    : `${backendPath}${path.delimiter}${sitePackagesPath}`;
+  const candidates = [];
+  const seen = new Set();
+
+  function pushCandidate(command, prefixArgs = [], label = command) {
+    const key = `${command}::${prefixArgs.join(' ')}`;
+    if (!command || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    candidates.push({
+      command,
+      prefixArgs,
+      label,
+      env: {
+        ...process.env,
+        PYTHONPATH: existingPythonPath,
+        DATA_DIR: dataDir
+      }
+    });
+  }
+
+  if (path.isAbsolute(bundledPython) && fs.existsSync(bundledPython)) {
+    pushCandidate(bundledPython, [], 'bundled venv python');
+  }
+
+  const pyvenvExecutable = pyvenv.executable && fs.existsSync(pyvenv.executable)
+    ? pyvenv.executable
+    : null;
+  const pyvenvHomePython = pyvenv.home
+    ? path.join(pyvenv.home, process.platform === 'win32' ? 'python.exe' : 'python3')
+    : null;
+
+  if (pyvenvExecutable) {
+    pushCandidate(pyvenvExecutable, [], 'system python from pyvenv executable');
+  }
+  if (pyvenvHomePython && fs.existsSync(pyvenvHomePython)) {
+    pushCandidate(pyvenvHomePython, [], 'system python from pyvenv home');
+  }
+
+  if (process.platform === 'win32') {
+    pushCandidate('py', ['-3.12'], 'py launcher 3.12');
+    pushCandidate('py', ['-3'], 'py launcher 3.x');
+    pushCandidate('python', [], 'python on PATH');
+  } else {
+    pushCandidate('python3', [], 'python3 on PATH');
+    pushCandidate('python', [], 'python on PATH');
+  }
+
+  return candidates;
+}
+
 function isAllowedExternalUrl(url) {
   try {
     const parsed = new URL(url);
@@ -379,72 +466,116 @@ async function ensureOllamaRunningInBackground() {
   return ready;
 }
 
-function createBackend() {
-  const isDev = !app.isPackaged;
-  const backendPath = isDev
-    ? path.join(__dirname, 'backend')
-    : path.join(process.resourcesPath, 'app.asar.unpacked', 'backend');
-  const pythonExecutable = resolvePythonExecutable(isDev);
-
-  console.log(`Starting backend server from: ${backendPath}`);
-  console.log(`Using Python: ${pythonExecutable}`);
-
-  if (!isDev && !fs.existsSync(pythonExecutable) && path.isAbsolute(pythonExecutable)) {
-    console.error(`Bundled Python executable not found at: ${pythonExecutable}`);
-  }
-
-  backendProcess = spawn(pythonExecutable, ['-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', String(BACKEND_PORT)], {
-    cwd: backendPath,
-    env: {
-      ...process.env,
-      PYTHONPATH: backendPath,
-      DATA_DIR: dataDir
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true
-  });
-
-  console.log(`Backend process PID: ${backendProcess.pid}`);
-
-  backendProcess.on('spawn', () => {
-    console.log(`Backend process spawned successfully: PID ${backendProcess.pid}`);
-  });
-
-  backendProcess.stdout.on('data', (data) => {
-    console.log(`Backend: ${data.toString()}`);
-  });
-
-  backendProcess.stderr.on('data', (data) => {
-    console.error(`Backend Error: ${data.toString()}`);
-  });
-
-  backendProcess.on('close', (code) => {
-    console.log(`Backend process exited with code ${code}`);
-  });
-
-  backendProcess.on('error', (error) => {
-    console.error('Failed to start backend:', error);
-  });
-
+function waitForBackendHealth(childProcess, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
-    // Wait for backend to be ready
-    const checkInterval = setInterval(() => {
-      const http = require('http');
+    let settled = false;
+    let stderrBuffer = '';
+    let stdoutBuffer = '';
+    let checkInterval = null;
+    let timeoutHandle = null;
+
+    const cleanup = () => {
+      if (checkInterval) clearInterval(checkInterval);
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      childProcess.stdout?.off('data', onStdout);
+      childProcess.stderr?.off('data', onStderr);
+      childProcess.off('close', onClose);
+      childProcess.off('error', onError);
+    };
+
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      fn(value);
+    };
+
+    const onStdout = (data) => {
+      stdoutBuffer += data.toString();
+      stdoutBuffer = stdoutBuffer.slice(-4000);
+      console.log(`Backend: ${data.toString()}`);
+    };
+
+    const onStderr = (data) => {
+      stderrBuffer += data.toString();
+      stderrBuffer = stderrBuffer.slice(-4000);
+      console.error(`Backend Error: ${data.toString()}`);
+    };
+
+    const onClose = (code) => {
+      finish(reject, new Error(`Backend process exited with code ${code}. ${stderrBuffer || stdoutBuffer || 'No diagnostic output.'}`));
+    };
+
+    const onError = (error) => {
+      finish(reject, error);
+    };
+
+    childProcess.stdout?.on('data', onStdout);
+    childProcess.stderr?.on('data', onStderr);
+    childProcess.on('close', onClose);
+    childProcess.on('error', onError);
+
+    checkInterval = setInterval(() => {
       http.get(`${BACKEND_URL}/health`, (res) => {
-        clearInterval(checkInterval);
-        console.log('Backend is ready!');
-        resolve();
+        res.resume();
+        if (res.statusCode >= 200 && res.statusCode < 500) {
+          finish(resolve);
+        }
       }).on('error', () => {
         // Backend not ready yet
       });
     }, 500);
 
-    // Timeout after 60 seconds
-    setTimeout(() => {
-      clearInterval(checkInterval);
-      reject(new Error('Backend failed to start within 60 seconds'));
-    }, 60000);
+    timeoutHandle = setTimeout(() => {
+      finish(reject, new Error(`Backend failed to start within ${Math.round(timeoutMs / 1000)} seconds. ${stderrBuffer || stdoutBuffer || 'No diagnostic output.'}`));
+    }, timeoutMs);
   });
+}
+
+async function createBackend() {
+  const isDev = !app.isPackaged;
+  const backendPath = isDev
+    ? path.join(__dirname, 'backend')
+    : path.join(process.resourcesPath, 'app.asar.unpacked', 'backend');
+  console.log(`Starting backend server from: ${backendPath}`);
+  const candidates = buildPythonLaunchCandidates(isDev, backendPath);
+  let lastError = null;
+
+  for (const candidate of candidates) {
+    console.log(`Trying backend launch with ${candidate.label}: ${candidate.command} ${candidate.prefixArgs.join(' ')}`.trim());
+    const child = spawn(
+      candidate.command,
+      [...candidate.prefixArgs, '-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', String(BACKEND_PORT)],
+      {
+        cwd: backendPath,
+        env: candidate.env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true
+      }
+    );
+
+    console.log(`Backend process PID: ${child.pid}`);
+    backendProcess = child;
+
+    try {
+      await waitForBackendHealth(child, 15000);
+      console.log(`Backend is ready via ${candidate.label}!`);
+      return;
+    } catch (error) {
+      lastError = error;
+      console.error(`Backend launch failed via ${candidate.label}:`, error.message || error);
+      try {
+        if (!child.killed) {
+          child.kill('SIGTERM');
+        }
+      } catch {
+        // Ignore cleanup errors.
+      }
+      backendProcess = null;
+    }
+  }
+
+  throw lastError || new Error('No usable Python runtime was found for the backend.');
 }
 
 function createWindow() {

@@ -1,6 +1,6 @@
 /**
  * Bloom AI Chat - Renderer Process Script
- * Premium offline AI chat with advanced features
+ * Offline AI chat renderer
  */
 
 // DOM Elements
@@ -60,9 +60,6 @@ const settingsMessageLimitNote = document.getElementById('settings-message-limit
 const settingsRuntimeStatus = document.getElementById('settings-runtime-status');
 const settingsHardwareStatus = document.getElementById('settings-hardware-status');
 const settingsPlatformStatus = document.getElementById('settings-platform-status');
-const welcomeInstallOllamaBtn = document.getElementById('welcome-install-ollama-btn');
-const welcomeRefreshModelsBtn = document.getElementById('welcome-refresh-models-btn');
-const welcomeOpenSettingsBtn = document.getElementById('welcome-open-settings-btn');
 const promptLibrary = document.getElementById('prompt-library');
 const statusRuntime = document.getElementById('status-runtime');
 const statusHardware = document.getElementById('status-hardware');
@@ -72,32 +69,9 @@ const statusRuntimePill = document.getElementById('status-runtime-pill');
 const statusHardwarePill = document.getElementById('status-hardware-pill');
 const openModelsPathBtn = document.getElementById('open-models-path-btn');
 const openSessionsPathBtn = document.getElementById('open-sessions-path-btn');
-const mcpStatusBar = document.getElementById('mcp-status-bar');
-const mcpList = document.getElementById('mcp-list');
-const mcpPresetSelect = document.getElementById('mcp-preset-select');
-const applyMcpPresetBtn = document.getElementById('apply-mcp-preset-btn');
-const mcpNameInput = document.getElementById('mcp-name-input');
-const mcpTransportSelect = document.getElementById('mcp-transport-select');
-const mcpCommandInput = document.getElementById('mcp-command-input');
-const mcpArgsInput = document.getElementById('mcp-args-input');
-const mcpUrlInput = document.getElementById('mcp-url-input');
-const mcpEnvInput = document.getElementById('mcp-env-input');
-const mcpDescriptionInput = document.getElementById('mcp-description-input');
-const mcpAutoConnectToggle = document.getElementById('mcp-autoconnect-toggle');
-const addMcpBtn = document.getElementById('add-mcp-btn');
-const refreshMcpBtn = document.getElementById('refresh-mcp-btn');
-const agentModeBadge = document.getElementById('agent-mode-badge');
-const agentCommandStrip = document.getElementById('agent-command-strip');
-const agentModeToggle = document.getElementById('agent-mode-toggle');
-const strictPermissionToggle = document.getElementById('strict-permission-toggle');
-const networkToolToggle = document.getElementById('network-tool-toggle');
-const agentLoopDepthSlider = document.getElementById('agent-loop-depth-slider');
-const agentLoopDepthValue = document.getElementById('agent-loop-depth-value');
-const permissionSessionList = document.getElementById('permission-session-list');
-const resetPermissionsBtn = document.getElementById('reset-permissions-btn');
-const openAuditLogBtn = document.getElementById('open-audit-log-btn');
 const API_BASE = 'http://127.0.0.1:8000';
 const SETTINGS_SAVE_DEBOUNCE_MS = 250;
+const APP_CONTROL_BLOCK_RESPONSE = "I can’t directly open Notepad or any other app on your computer right now in Bloom. I can guide you step-by-step, and direct app control may be added in a future update.";
 
 // State
 let currentSessionId = null;
@@ -111,15 +85,9 @@ let settings = {
     temperature: 0.7,
     defaultModel: 'llama3',
     developerMode: false,
-    agenticCloudMode: false,
     skills: [],
     monthlyTokenLimit: 200000,
-    mcpServers: [],
-    sidebarWidth: 300,
-    agentModeEnabled: false,
-    strictPermissionMode: false,
-    maxAgentLoopDepth: 5,
-    networkToolEnabled: false
+    sidebarWidth: 300
 };
 let isGenerating = false;
 let abortController = null;
@@ -135,87 +103,7 @@ let sidebarResizeStartWidth = 300;
 let runtimeStatusTimer = null;
 let generationStartedAt = null;
 let generationCharCount = 0;
-const activeProposalCards = new Map();
-let mcpRuntimeStatus = [];
 
-class PermissionManager {
-    constructor() {
-        this.sessionPermissions = new Map();
-    }
-
-    buildKey(proposal) {
-        const params = proposal?.params || {};
-        const signature = {
-            tool: proposal?.tool || '',
-            app: params.app || '',
-            path: params.path || '',
-            command: params.command || '',
-            query: params.query || '',
-            url: params.url || ''
-        };
-        return JSON.stringify(signature);
-    }
-
-    rememberForSession(proposal) {
-        const key = this.buildKey(proposal);
-        this.sessionPermissions.set(key, {
-            key,
-            tool: proposal?.tool || 'unknown',
-            summary: proposal?.plainDescription || proposal?.reason || 'Approved local action',
-            permissionTier: Number(proposal?.permissionTier || 2),
-            grantedAt: new Date().toISOString()
-        });
-        this.render();
-    }
-
-    hasSessionGrant(proposal) {
-        return this.sessionPermissions.has(this.buildKey(proposal));
-    }
-
-    revoke(key) {
-        this.sessionPermissions.delete(key);
-        this.render();
-    }
-
-    resetAll() {
-        this.sessionPermissions.clear();
-        this.render();
-    }
-
-    entries() {
-        return Array.from(this.sessionPermissions.values())
-            .sort((a, b) => String(b.grantedAt).localeCompare(String(a.grantedAt)));
-    }
-
-    render() {
-        if (!permissionSessionList) return;
-        permissionSessionList.innerHTML = '';
-
-        const entries = this.entries();
-        if (!entries.length) {
-            const empty = document.createElement('div');
-            empty.className = 'permission-empty';
-            empty.textContent = 'No session permissions granted yet.';
-            permissionSessionList.appendChild(empty);
-            return;
-        }
-
-        entries.forEach((entry) => {
-            const row = document.createElement('div');
-            row.className = 'permission-grant-item';
-            row.innerHTML = `
-                <div class="permission-grant-copy">
-                    <div class="permission-grant-title">${escapeHtml(entry.tool.replace(/_/g, ' '))}</div>
-                    <div class="permission-grant-meta">${escapeHtml(entry.summary)} • Tier ${entry.permissionTier}</div>
-                </div>
-                <button type="button" class="small-btn permission-revoke-btn" data-permission-key="${escapeHtml(entry.key)}">Revoke</button>
-            `;
-            permissionSessionList.appendChild(row);
-        });
-    }
-}
-
-const permissionManager = new PermissionManager();
 
 function apiUrl(pathname) {
     return `${API_BASE}${pathname}`;
@@ -290,154 +178,6 @@ function normalizeSkills(skills) {
         .filter(Boolean);
 }
 
-function normalizeMcpServers(servers) {
-    if (!Array.isArray(servers)) return [];
-
-    return servers
-        .map((server, index) => {
-            const name = String(server?.name || `MCP ${index + 1}`).trim();
-            const rawTransport = String(server?.transport || '').trim().toLowerCase();
-            const command = String(server?.command || '').trim();
-            const args = Array.isArray(server?.args)
-                ? server.args.map((item) => String(item))
-                : String(server?.args || '').trim().split(/\s+/).filter(Boolean);
-            const url = String(server?.url || '').trim();
-            const transport = rawTransport
-                ? (rawTransport === 'sse' ? 'sse' : 'stdio')
-                : (url.toLowerCase().startsWith('http') ? 'sse' : 'stdio');
-            const env = typeof server?.env === 'object' && server?.env !== null ? server.env : {};
-            const description = String(server?.description || '').trim();
-            if (!name) return null;
-            if (transport === 'stdio' && !command) return null;
-            if (transport === 'sse' && !url) return null;
-            return {
-                id: String(server?.id || `${Date.now()}-${index}`),
-                name,
-                transport,
-                command,
-                args,
-                url,
-                env: Object.fromEntries(
-                    Object.entries(env).map(([key, value]) => [String(key), String(value)])
-                ),
-                description,
-                enabled: server?.enabled !== false,
-                autoConnect: server?.autoConnect !== false
-            };
-        })
-        .filter(Boolean);
-}
-
-function parseArgsInput(argsText) {
-    return String(argsText || '')
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean);
-}
-
-function formatArgsInput(args) {
-    if (!Array.isArray(args)) return '';
-    return args.map((item) => String(item)).join(' ');
-}
-
-function parseEnvInput(rawText) {
-    const result = {};
-    String(rawText || '')
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .forEach((line) => {
-            const eq = line.indexOf('=');
-            if (eq <= 0) return;
-            const key = line.slice(0, eq).trim();
-            const value = line.slice(eq + 1).trim();
-            if (key) result[key] = value;
-        });
-    return result;
-}
-
-function formatEnvInput(envObj) {
-    if (!envObj || typeof envObj !== 'object') return '';
-    return Object.entries(envObj)
-        .map(([key, value]) => `${key}=${value}`)
-        .join('\n');
-}
-
-function inferHomePathForPresets() {
-    const modelsPath = String(usageSummary?.modelsPath || '').trim();
-    const marker = '\\.ollama\\models';
-    const markerIndex = modelsPath.toLowerCase().indexOf(marker.toLowerCase());
-    if (markerIndex > 0) {
-        return modelsPath.slice(0, markerIndex);
-    }
-    return 'C:\\Users\\<user>';
-}
-
-function getMcpPresetConfig(presetKey) {
-    const homePath = inferHomePathForPresets();
-    const documentsPath = `${homePath}\\Documents`;
-    const presets = {
-        filesystem: {
-            name: 'filesystem',
-            transport: 'stdio',
-            command: 'npx',
-            args: ['-y', '@modelcontextprotocol/server-filesystem', documentsPath],
-            description: 'Local filesystem access scoped to your Documents folder.',
-            env: {}
-        },
-        github: {
-            name: 'github',
-            transport: 'stdio',
-            command: 'npx',
-            args: ['-y', '@modelcontextprotocol/server-github'],
-            description: 'GitHub tools for repositories, issues, and pull requests.',
-            env: { GITHUB_TOKEN: '' }
-        },
-        git: {
-            name: 'git',
-            transport: 'stdio',
-            command: 'npx',
-            args: ['-y', '@modelcontextprotocol/server-git'],
-            description: 'Local git tools for status, diffs, and commits.',
-            env: {}
-        },
-        brave: {
-            name: 'brave-search',
-            transport: 'stdio',
-            command: 'npx',
-            args: ['-y', '@anthropic/brave-search'],
-            description: 'Brave Search MCP for current web lookups.',
-            env: { BRAVE_API_KEY: '' }
-        },
-        sqlite: {
-            name: 'sqlite',
-            transport: 'stdio',
-            command: 'npx',
-            args: ['-y', '@modelcontextprotocol/server-sqlite', `${documentsPath}\\bloom.db`],
-            description: 'SQLite database query tools for a local file.',
-            env: {}
-        }
-    };
-    return presets[String(presetKey || '').trim().toLowerCase()] || null;
-}
-
-function applyMcpPreset() {
-    const preset = getMcpPresetConfig(mcpPresetSelect?.value || '');
-    if (!preset) {
-        alert('Select an MCP preset first.');
-        return;
-    }
-    if (mcpNameInput) mcpNameInput.value = preset.name;
-    if (mcpTransportSelect) mcpTransportSelect.value = preset.transport;
-    syncMcpTransportFields();
-    if (mcpCommandInput) mcpCommandInput.value = preset.command || '';
-    if (mcpArgsInput) mcpArgsInput.value = formatArgsInput(preset.args || []);
-    if (mcpUrlInput) mcpUrlInput.value = preset.url || '';
-    if (mcpEnvInput) mcpEnvInput.value = formatEnvInput(preset.env || {});
-    if (mcpDescriptionInput) mcpDescriptionInput.value = preset.description || '';
-    if (mcpAutoConnectToggle) mcpAutoConnectToggle.checked = true;
-}
-
 function formatNumber(value) {
     return new Intl.NumberFormat().format(Number(value || 0));
 }
@@ -449,22 +189,12 @@ function formatBytes(bytes) {
     return `${gb >= 10 ? gb.toFixed(0) : gb.toFixed(1)} GB`;
 }
 
-function isAgenticModelName(modelName) {
-    const name = String(modelName || '').toLowerCase();
-    return name.includes('codex')
-        || name.includes('claude')
-        || name.includes('agent')
-        || (name.includes('cloud') && (name.includes('coder') || name.includes('deepseek') || name.includes('qwen3')));
-}
-
 function inferModelCategory(model) {
     const name = String(model?.name || '').toLowerCase();
     const sizeText = formatBytes(model?.size);
 
     let category = 'Chat';
-    if (isAgenticModelName(name)) {
-        category = 'Agentic';
-    } else if (name.includes('coder') || name.includes('code') || name.includes('deepseek-coder') || name.includes('codellama')) {
+    if (name.includes('coder') || name.includes('code') || name.includes('deepseek-coder') || name.includes('codellama')) {
         category = 'Coding';
     } else if (name.includes('vision') || name.includes('vl') || name.includes('llava')) {
         category = 'Vision';
@@ -491,9 +221,6 @@ function inferModelCategory(model) {
     };
 }
 
-function isAgentModeActive() {
-    return Boolean(settings.agentModeEnabled) && isAgenticModelName(currentModel);
-}
 
 function highlightCode(code, language) {
     const text = String(code || '');
@@ -656,152 +383,6 @@ function renderSkillsList() {
     });
 }
 
-function renderMcpServersList() {
-    if (!mcpList) return;
-
-    const servers = normalizeMcpServers(settings.mcpServers);
-    settings.mcpServers = servers;
-    const statusMap = new Map((mcpRuntimeStatus || []).map((server) => [String(server.id), server]));
-    mcpList.innerHTML = '';
-
-    const connectedServers = (mcpRuntimeStatus || []).filter((server) => server.status === 'connected');
-    const availableCount = connectedServers.length;
-    const totalTools = connectedServers.reduce((sum, server) => sum + Number(server.toolCount || 0), 0);
-    if (mcpStatusBar) {
-        if (!servers.length) {
-            mcpStatusBar.textContent = 'No MCP servers configured.';
-        } else {
-            mcpStatusBar.textContent = `Configured: ${servers.length} | Connected: ${availableCount} | Tools: ${totalTools}`;
-        }
-    }
-
-    if (!servers.length) {
-        const empty = document.createElement('div');
-        empty.className = 'mcp-empty';
-        empty.textContent = 'No MCP servers configured yet.';
-        mcpList.appendChild(empty);
-        return;
-    }
-
-    servers.forEach((server) => {
-        const runtime = statusMap.get(String(server.id)) || {};
-        const statusValue = String(runtime.status || (server.enabled ? 'idle' : 'disabled')).toLowerCase();
-        const statusClass = statusValue === 'connected' ? 'connected' : statusValue === 'error' ? 'error' : 'idle';
-        const tools = Array.isArray(runtime.tools) ? runtime.tools : [];
-        const toolNames = tools
-            .map((item) => String(item?.name || '').trim())
-            .filter(Boolean)
-            .slice(0, 12);
-        const toolPreview = toolNames.length ? toolNames.join(', ') : 'No tools discovered yet.';
-
-        const row = document.createElement('div');
-        row.className = 'mcp-item';
-        row.dataset.mcpId = server.id;
-        row.innerHTML = `
-            <input type="checkbox" class="mcp-checkbox" ${server.enabled ? 'checked' : ''} aria-label="Enable MCP ${server.name}">
-            <div class="mcp-meta">
-                <div class="mcp-name-row">
-                    <span class="mcp-status-dot ${statusClass}" title="Status: ${escapeHtml(statusValue)}"></span>
-                    <div class="mcp-name">${escapeHtml(server.name)}</div>
-                </div>
-                <div class="mcp-url">${escapeHtml((server.transport || 'stdio').toUpperCase())} | ${escapeHtml(statusValue)}</div>
-                <div class="mcp-command">${escapeHtml(server.transport === 'sse' ? server.url : `${server.command} ${formatArgsInput(server.args)}`)}</div>
-                <div class="mcp-desc">${escapeHtml(server.description || 'No description')}</div>
-                ${runtime.error ? `<div class="mcp-error">${escapeHtml(runtime.error)}</div>` : ''}
-                <details class="mcp-tools-preview">
-                    <summary>Discovered tools (${toolNames.length || Number(runtime.toolCount || 0)})</summary>
-                    <code>${escapeHtml(toolPreview)}</code>
-                </details>
-            </div>
-            <div class="mcp-actions">
-                <button class="mcp-mini-btn mcp-test-btn" title="Test connection">Test</button>
-                <button class="mcp-mini-btn mcp-reconnect-btn" title="Reconnect server">Reconnect</button>
-                <button class="skill-delete mcp-delete-btn" title="Delete MCP server" aria-label="Delete MCP server ${escapeHtml(server.name)}">
-                    <i class="fa-solid fa-trash"></i>
-                </button>
-            </div>
-        `;
-        mcpList.appendChild(row);
-    });
-}
-
-function syncMcpTransportFields() {
-    const transport = String(mcpTransportSelect?.value || 'stdio').toLowerCase();
-    const stdioFields = document.querySelectorAll('.mcp-stdio-field');
-    const sseFields = document.querySelectorAll('.mcp-sse-field');
-    stdioFields.forEach((field) => {
-        field.style.display = transport === 'stdio' ? '' : 'none';
-    });
-    sseFields.forEach((field) => {
-        field.style.display = transport === 'sse' ? '' : 'none';
-    });
-}
-
-async function refreshMcpRuntimeStatus() {
-    try {
-        const response = await fetch(apiUrl('/mcp/status'));
-        if (!response.ok) {
-            const details = await getResponseErrorDetails(response);
-            throw new Error(`MCP status failed ${response.status}${details ? ` - ${details}` : ''}`);
-        }
-
-        const data = await response.json();
-        mcpRuntimeStatus = Array.isArray(data?.servers) ? data.servers : [];
-        if (mcpStatusBar && data?.available === false) {
-            mcpStatusBar.textContent = `MCP SDK unavailable: ${data?.importError || 'install backend requirements'}`;
-        }
-    } catch (error) {
-        console.warn('MCP status fetch failed:', error.message || error);
-        mcpRuntimeStatus = [];
-        if (mcpStatusBar) {
-            mcpStatusBar.textContent = 'MCP status unavailable.';
-        }
-    }
-
-    renderMcpServersList();
-}
-
-async function refreshMcpConnections() {
-    try {
-        const response = await fetch(apiUrl('/mcp/refresh'), { method: 'POST' });
-        if (!response.ok) {
-            const details = await getResponseErrorDetails(response);
-            throw new Error(`MCP refresh failed ${response.status}${details ? ` - ${details}` : ''}`);
-        }
-        const data = await response.json();
-        mcpRuntimeStatus = Array.isArray(data?.servers) ? data.servers : [];
-    } catch (error) {
-        console.warn('MCP reconnect failed:', error.message || error);
-    }
-    renderMcpServersList();
-}
-
-async function testMcpServer(serverId) {
-    const safeId = String(serverId || '').trim();
-    if (!safeId) return;
-    try {
-        const response = await fetch(apiUrl(`/mcp/servers/${encodeURIComponent(safeId)}/test`), { method: 'POST' });
-        if (!response.ok) {
-            const details = await getResponseErrorDetails(response);
-            throw new Error(`MCP test failed ${response.status}${details ? ` - ${details}` : ''}`);
-        }
-    } catch (error) {
-        alert(`MCP test failed.\n\n${error.message || error}`);
-    }
-    await refreshMcpRuntimeStatus();
-}
-
-async function reconnectMcpServer(serverId) {
-    const safeId = String(serverId || '').trim();
-    if (!safeId) return;
-    try {
-        await fetch(apiUrl(`/mcp/servers/${encodeURIComponent(safeId)}/reconnect`), { method: 'POST' });
-    } catch (error) {
-        console.warn('MCP reconnect request failed:', error.message || error);
-    }
-    await refreshMcpRuntimeStatus();
-}
-
 async function loadUsageSummary() {
     try {
         const response = await fetch(apiUrl('/usage'));
@@ -872,14 +453,12 @@ function getEffectiveSystemPrompt() {
         );
     }
 
-    if (cloud && settings.agenticCloudMode) {
-        parts.push(
-            'When useful, act agentically: propose a short plan, execute step-by-step reasoning internally, return actionable implementation details, and provide final verified output.'
-        );
-    }
 
     parts.push(
         'Default to English unless I explicitly ask for another response language. If I paste source material in another language, treat it as reference content and keep responding in English unless I clearly request a language switch.'
+    );
+    parts.push(
+        'You do not have direct control of the user device in this Bloom build. Never claim you opened, closed, launched, edited, or executed anything on the computer. Never output tool-call JSON (for example {"tool":"open_app",...}). If asked to control apps/files/system directly, clearly say you cannot do that right now and that it may be available in a future update.'
     );
 
     const enabledSkills = normalizeSkills(settings.skills).filter((skill) => skill.enabled);
@@ -893,99 +472,43 @@ function getEffectiveSystemPrompt() {
     return parts.join('\n\n').trim();
 }
 
-function parseDesktopCommand(rawMessage) {
-    const text = String(rawMessage || '').trim();
-    if (!text) return null;
+function isDirectAppControlRequest(message) {
+    const text = String(message || '').trim().toLowerCase();
+    if (!text) return false;
 
-    const commands = [
-        { regex: /open\s+(chrome|browser)/i, appId: 'chrome', label: 'Chrome' },
-        { regex: /open\s+paint/i, appId: 'paint', label: 'Paint' },
-        { regex: /open\s+task\s*manager/i, appId: 'taskmgr', label: 'Task Manager' },
-        { regex: /open\s+settings/i, appId: 'settings', label: 'Windows Settings' },
-        { regex: /open\s+spotify/i, appId: 'spotify', label: 'Spotify' },
-        { regex: /open\s+discord/i, appId: 'discord', label: 'Discord' },
-        { regex: /open\s+word/i, appId: 'word', label: 'Microsoft Word' },
-        { regex: /open\s+excel/i, appId: 'excel', label: 'Microsoft Excel' },
-        { regex: /^(open|launch|start)\s+(notepad|note[\s-]?pad)$/i, appId: 'notepad', label: 'Notepad' },
-        { regex: /^(open|launch|start)\s+(calculator|calc)$/i, appId: 'calculator', label: 'Calculator' },
-        { regex: /^(open|launch|start)\s+(file\s+explorer|explorer)$/i, appId: 'explorer', label: 'File Explorer' },
-        { regex: /^(open|launch|start)\s+(cmd|command\s+prompt|terminal)$/i, appId: 'cmd', label: 'Command Prompt' },
-        { regex: /^(open|launch|start)\s+(powershell|power\s+shell)$/i, appId: 'powershell', label: 'PowerShell' },
-        { regex: /^(open|launch|start)\s+(vscode|vs\s*code|visual\s+studio\s+code)$/i, appId: 'vscode', label: 'VS Code' },
-        { regex: /system\s*info|hardware\s*info/i, action: 'sysinfo', label: 'System Info' },
-        { regex: /running\s*processes/i, action: 'processes', label: 'Running Processes' },
-        { regex: /read\s+clipboard/i, action: 'clipboard_read', label: 'Clipboard' },
-        { regex: /list\s+files?\s+in\s+(.+)/i, action: 'list_dir', label: 'List Files', groupIndex: 1 },
-        { regex: /read\s+file\s+(.+)/i, action: 'read_file', label: 'Read File', groupIndex: 1 }
-    ];
+    const imperative = /^(can you\s+|could you\s+|please\s+)?(open|close|launch|start|run)\b/i.test(text);
+    const appNames = /\b(notepad|calculator|calc|chrome|browser|vscode|vs code|visual studio code|explorer|file explorer|cmd|command prompt|powershell|terminal|spotify|discord|word|excel)\b/i.test(text);
+    const appPhrase = /\b(open|close|launch|start|run)\b.{0,24}\b(app|application|program)\b/i.test(text);
 
-    for (const command of commands) {
-        const match = text.match(command.regex);
-        if (!match) continue;
-        return {
-            ...command,
-            capture: command.groupIndex ? match[command.groupIndex] : null
-        };
-    }
-
-    return null;
+    return (imperative && appNames) || appPhrase;
 }
 
-async function executeDesktopCommand(commandInfo) {
-    try {
-        let content = '';
+function normalizeAssistantOutput(rawContent, userMessage) {
+    const content = String(rawContent || '').trim();
+    if (!content) return rawContent;
 
-        if (commandInfo.appId) {
-            const result = await window.systemAPI?.openApp?.(commandInfo.appId);
-            if (!result?.success) {
-                throw new Error(result?.error || 'Unknown error');
+    const mightBeToolJson = content.includes('"tool"') && content.includes('"params"');
+    if (mightBeToolJson) {
+        const stripped = content
+            .replace(/^```json\s*/i, '')
+            .replace(/^```\s*/i, '')
+            .replace(/\s*```$/i, '')
+            .trim();
+        try {
+            const parsed = JSON.parse(stripped);
+            if (parsed && typeof parsed === 'object' && parsed.tool && parsed.params) {
+                return APP_CONTROL_BLOCK_RESPONSE;
             }
-            content = `Opened **${commandInfo.label}** successfully.`;
-        } else if (commandInfo.action === 'sysinfo') {
-            const result = await window.systemAPI?.getInfo?.();
-            if (!result?.success) throw new Error(result?.error || 'Unknown error');
-            const info = result.data || {};
-            content = `**System Info**\n\n- CPU: ${info.cpuModel || 'Unknown'}\n- Cores: ${info.cpuCount || 'Unknown'}\n- Memory: ${formatBytes(info.totalMemoryBytes || 0)} total\n- Runtime: ${info.ollamaReady ? 'Ollama connected' : 'Ollama not ready'}\n- Hardware: ${info.gpuName || 'GPU unavailable'}`;
-        } else if (commandInfo.action === 'processes') {
-            const result = await window.systemAPI?.getProcesses?.();
-            if (!result?.success) throw new Error(result?.error || 'Unknown error');
-            content = `**Running Processes**\n\n\`\`\`text\n${result.output || 'No process list returned.'}\n\`\`\``;
-        } else if (commandInfo.action === 'clipboard_read') {
-            const result = await window.systemAPI?.readClipboard?.();
-            if (!result?.success) throw new Error(result?.error || 'Unknown error');
-            content = `**Clipboard**\n\n\`\`\`text\n${result.content || '(Clipboard is empty)'}\n\`\`\``;
-        } else if (commandInfo.action === 'list_dir') {
-            const result = await window.systemAPI?.listDir?.(commandInfo.capture);
-            if (!result?.success) throw new Error(result?.error || 'Unknown error');
-            const entries = (result.entries || []).map((entry) => `- ${entry.type === 'directory' ? '[DIR]' : '[FILE]'} ${entry.name}`).join('\n');
-            content = `**Directory Listing**\n\n${escapeHtml(result.path || commandInfo.capture)}\n\n\`\`\`text\n${entries || 'No files found.'}\n\`\`\``;
-        } else if (commandInfo.action === 'read_file') {
-            const result = await window.systemAPI?.readFile?.(commandInfo.capture, 1, 200);
-            if (!result?.success) throw new Error(result?.error || 'Unknown error');
-            content = `**File Preview**\n\n${escapeHtml(result.path || commandInfo.capture)}\n\n\`\`\`text\n${result.content || 'No content returned.'}\n\`\`\``;
+        } catch {
+            // Ignore parse failure and continue with heuristics below.
         }
-
-        showMessage(content, 'ai');
-        currentMessages.push({
-            role: 'assistant',
-            content,
-            timestamp: new Date().toISOString()
-        });
-    } catch (error) {
-        const content = `I tried to open **${commandInfo.label}**, but it failed.\n\nDetails: ${error.message || String(error)}`;
-        showMessage(content, 'ai');
-        currentMessages.push({
-            role: 'assistant',
-            content,
-            timestamp: new Date().toISOString()
-        });
     }
 
-    try {
-        await saveCurrentSession();
-    } catch (saveError) {
-        console.error('Failed to save session:', saveError);
+    if (isDirectAppControlRequest(userMessage) && /i('| a)?ll\s+(open|launch|start)|"tool"\s*:\s*"open_app"/i.test(content)) {
+        return APP_CONTROL_BLOCK_RESPONSE;
     }
+
+    return rawContent;
 }
 
 function applyZoomLevel(level) {
@@ -1278,6 +801,47 @@ async function waitBackendReady() {
     return false;
 }
 
+function revealAppShell() {
+    loadingScreen.style.opacity = '0';
+    setTimeout(() => {
+        loadingScreen.style.display = 'none';
+        appContainer.classList.add('loaded');
+    }, 250);
+}
+
+function showBackendUnavailableState() {
+    revealAppShell();
+    welcomeMessage.style.display = 'flex';
+    messageContainer.style.display = 'none';
+    const subtitle = welcomeMessage.querySelector('.welcome-subtitle');
+    if (subtitle) {
+        subtitle.textContent = 'Bloom opened, but the local backend is offline right now.';
+    }
+    if (statusRuntime) {
+        statusRuntime.textContent = 'Backend offline';
+    }
+    if (settingsRuntimeStatus) {
+        settingsRuntimeStatus.textContent = 'Backend offline';
+    }
+}
+
+function failOpenFromRendererError(errorLike) {
+    const details = typeof errorLike === 'string'
+        ? errorLike
+        : errorLike?.message || String(errorLike || 'Unknown renderer error');
+    console.error('Renderer fail-open triggered:', details);
+    backendStatus.textContent = 'Bloom recovered from a startup error';
+    showBackendUnavailableState();
+}
+
+window.addEventListener('error', (event) => {
+    failOpenFromRendererError(event?.error || event?.message || 'Script error');
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+    failOpenFromRendererError(event?.reason || 'Unhandled promise rejection');
+});
+
 // Chat API Functions
 async function sendMessage() {
     ensureChatInputReady();
@@ -1307,9 +871,14 @@ async function sendMessage() {
         updateSessionTitle(message);
     }
 
-    const desktopCommand = !isAgentModeActive() ? parseDesktopCommand(message) : null;
-    if (desktopCommand) {
-        await executeDesktopCommand(desktopCommand);
+    if (isDirectAppControlRequest(message)) {
+        showMessage(APP_CONTROL_BLOCK_RESPONSE, 'ai');
+        currentMessages.push({ role: 'assistant', content: APP_CONTROL_BLOCK_RESPONSE, timestamp: new Date().toISOString() });
+        try {
+            await saveCurrentSession();
+        } catch (saveError) {
+            console.error('Failed to save session:', saveError);
+        }
         return;
     }
 
@@ -1330,7 +899,7 @@ async function getAIResponse(userMessage) {
     const typingId = showTypingIndicator();
 
     try {
-        const endpoint = isAgentModeActive() ? '/agent/chat' : '/chat';
+        const endpoint = '/chat';
         const response = await fetch(apiUrl(endpoint), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1342,13 +911,7 @@ async function getAIResponse(userMessage) {
                     .map(m => ({ role: normalizeRoleForBackend(m.role), content: m.content || '' })),
                 temperature: settings.temperature,
                 system_prompt: getEffectiveSystemPrompt(),
-                session_id: currentSessionId,
-                agent_settings: {
-                    agentModeEnabled: Boolean(settings.agentModeEnabled),
-                    strictPermissionMode: Boolean(settings.strictPermissionMode),
-                    maxAgentLoopDepth: Math.max(1, Math.min(10, parseInt(String(settings.maxAgentLoopDepth || '5'), 10))),
-                    networkToolEnabled: Boolean(settings.networkToolEnabled)
-                }
+                session_id: currentSessionId
             }),
             signal: abortController.signal
         });
@@ -1371,8 +934,6 @@ async function getAIResponse(userMessage) {
         let messageTextElement = null;
         let sseBuffer = '';
         let streamDone = false;
-        let hadStructuredAgentOutput = false;
-
         function ensureAssistantMessage() {
             if (!messageDiv) {
                 removeTypingIndicator(typingId);
@@ -1412,53 +973,6 @@ async function getAIResponse(userMessage) {
                             fullResponse += `\n\n**Error:** ${data.error}`;
                             ensured.messageTextElement.innerHTML = renderAiMarkdown(fullResponse);
                             addMessageActions(ensured.messageDiv, fullResponse);
-                            return;
-                        }
-
-                        if (data.type === 'thinking') {
-                            hadStructuredAgentOutput = true;
-                            updateTypingIndicatorStatus(typingId, data.content);
-                            addThinkingEventToUI(data.content);
-                            continue;
-                        }
-
-                        if (data.type === 'tool_proposal' && data.proposal) {
-                            hadStructuredAgentOutput = true;
-                            removeTypingIndicator(typingId);
-                            const proposal = data.proposal;
-                            if (proposal.rememberForSessionAllowed && permissionManager.hasSessionGrant(proposal)) {
-                                await fetch(apiUrl('/agent/proposals/decision'), {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                        requestId: proposal.requestId,
-                                        decision: 'allow_session',
-                                        rememberForSession: true
-                                    })
-                                });
-                            } else {
-                                addTaskProposalToUI(proposal);
-                            }
-                            continue;
-                        }
-
-                        if (data.type === 'tool_result') {
-                            hadStructuredAgentOutput = true;
-                            removeTypingIndicator(typingId);
-                            addToolResultToUI(data);
-                            continue;
-                        }
-
-                        if (data.type === 'safety_block') {
-                            hadStructuredAgentOutput = true;
-                            removeTypingIndicator(typingId);
-                            addSafetyBlockToUI(data);
-                            continue;
-                        }
-
-                        if (data.tool_request) {
-                            removeTypingIndicator(typingId);
-                            addToolApprovalToUI(data.tool_request);
                             return;
                         }
 
@@ -1509,10 +1023,18 @@ async function getAIResponse(userMessage) {
             }
         }
 
-        if (!fullResponse.trim() && !hadStructuredAgentOutput) {
+        if (!fullResponse.trim()) {
             const ensured = ensureAssistantMessage();
             fullResponse = '*No response content returned.*';
             ensured.messageTextElement.innerHTML = renderAiMarkdown(fullResponse);
+        }
+
+        const normalizedFinal = normalizeAssistantOutput(fullResponse, userMessage);
+        if (normalizedFinal !== fullResponse) {
+            fullResponse = normalizedFinal;
+            const ensured = ensureAssistantMessage();
+            ensured.messageTextElement.innerHTML = renderAiMarkdown(fullResponse);
+            scrollToBottom();
         }
 
         if (statusSpeed && generationStartedAt && fullResponse.trim()) {
@@ -1801,101 +1323,6 @@ function showMessage(text, role = 'ai') {
     messageContainer.appendChild(messageDiv);
     scrollToBottom();
     return messageDiv;
-}
-
-function addToolApprovalToUI(toolRequest) {
-    const messageDiv = document.createElement('div');
-    const createdAt = new Date();
-    const risk = String(toolRequest?.risk || 'medium').toUpperCase();
-    const summary = escapeHtml(toolRequest?.summary || 'Bloom wants permission to run a local action.');
-    const preview = String(toolRequest?.preview || '').trim();
-
-    messageDiv.className = 'message ai-message';
-    messageDiv.dataset.timestamp = createdAt.toISOString();
-    messageDiv.dataset.toolRequestId = String(toolRequest?.requestId || '');
-    messageDiv.innerHTML = `
-        <div class="message-avatar ai-avatar">
-            <i class="fa-solid fa-spa"></i>
-        </div>
-        <div class="message-content">
-            <div class="message-header">
-                <span class="message-author">Bloom AI</span>
-                <span class="message-time">${formatTime(createdAt)}</span>
-            </div>
-            <div class="message-text tool-approval-card">
-                <div class="tool-approval-header">
-                    <div class="tool-approval-title"><i class="fa-solid fa-shield-halved"></i> Approval Required</div>
-                    <span class="tool-risk-pill">${risk}</span>
-                </div>
-                <div class="tool-approval-summary">${summary}</div>
-                ${preview ? `<pre class="tool-preview">${escapeHtml(preview)}</pre>` : ''}
-                <div class="tool-approval-note">Bloom will only continue after you approve this action.</div>
-                <div class="tool-approval-actions">
-                    <button class="message-action-btn tool-approve-btn" type="button">Approve</button>
-                    <button class="message-action-btn tool-cancel-btn" type="button">Cancel</button>
-                </div>
-            </div>
-        </div>
-    `;
-
-    messageContainer.appendChild(messageDiv);
-    scrollToBottom();
-
-    messageDiv.querySelector('.tool-approve-btn')?.addEventListener('click', async () => {
-        await resolveToolApproval(messageDiv, true);
-    });
-    messageDiv.querySelector('.tool-cancel-btn')?.addEventListener('click', async () => {
-        await resolveToolApproval(messageDiv, false);
-    });
-
-    return messageDiv;
-}
-
-async function resolveToolApproval(messageDiv, approved) {
-    const requestId = String(messageDiv?.dataset?.toolRequestId || '');
-    const textElement = messageDiv?.querySelector('.message-text');
-    const note = messageDiv?.querySelector('.tool-approval-note');
-    const buttons = Array.from(messageDiv?.querySelectorAll('.tool-approve-btn, .tool-cancel-btn') || []);
-    buttons.forEach((button) => {
-        button.disabled = true;
-    });
-    if (note) {
-        note.textContent = approved ? 'Executing approved action...' : 'Cancelling pending action...';
-    }
-
-    const endpoint = approved ? '/tools/confirm' : '/tools/cancel';
-    let content = approved ? 'Approved action completed.' : '*Pending action cancelled.*';
-
-    try {
-        const response = await fetch(apiUrl(endpoint), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ requestId })
-        });
-        const data = await response.json();
-        if (!response.ok) {
-            throw new Error(data?.detail || data?.message || `Request failed (${response.status})`);
-        }
-        content = approved ? (data?.message || content) : `*${data?.message || 'Pending action cancelled.'}*`;
-    } catch (error) {
-        content = `**Action failed.**\n\n${error.message || String(error)}`;
-    }
-
-    if (textElement) {
-        textElement.classList.remove('tool-approval-card');
-        textElement.innerHTML = renderAiMarkdown(content);
-    }
-
-    const timestamp = new Date().toISOString();
-    messageDiv.dataset.timestamp = timestamp;
-    currentMessages.push({ role: 'assistant', content, timestamp });
-    addMessageActions(messageDiv, content);
-
-    try {
-        await saveCurrentSession();
-    } catch (saveError) {
-        console.error('Failed to save session after tool approval:', saveError);
-    }
 }
 
 function formatTime(date) {
@@ -2217,7 +1644,7 @@ async function loadModels() {
             groupedModels.set(meta.category, group);
         });
 
-        const categoryOrder = ['Agentic', 'Chat', 'Coding', 'Fast', 'Vision', 'Cloud'];
+        const categoryOrder = ['Chat', 'Coding', 'Fast', 'Vision', 'Cloud'];
         categoryOrder.forEach((category) => {
             const models = groupedModels.get(category);
             if (!models?.length) return;
@@ -2280,257 +1707,7 @@ function updateModelDisplay() {
         const meta = inferModelCategory(model || { name: currentModel });
         currentModelDisplay.textContent = `${currentModel} | ${meta.category}`;
     }
-    updateAgentModeUI();
     updateStatusBar();
-}
-
-function updateTypingIndicatorStatus(id, text) {
-    const indicator = document.getElementById(id);
-    const label = indicator?.querySelector('.thinking-title span');
-    if (label && text) {
-        label.textContent = text;
-    }
-}
-
-function addThinkingEventToUI(content) {
-    if (!content) return;
-    const note = document.createElement('div');
-    note.className = 'message ai-message thinking-trace-message';
-    note.innerHTML = `
-        <div class="message-avatar ai-avatar">
-            <i class="fa-solid fa-spa"></i>
-        </div>
-        <div class="message-content">
-            <details class="thinking-trace" open>
-                <summary>Bloom planning</summary>
-                <div class="thinking-trace-copy">${escapeHtml(content)}</div>
-            </details>
-        </div>
-    `;
-    messageContainer.appendChild(note);
-    scrollToBottom();
-}
-
-function addSafetyBlockToUI(payload) {
-    const content = `**Blocked for safety**\n\n${payload?.content || 'Bloom blocked this action.'}`;
-    const messageDiv = showMessage(content, 'ai');
-    messageDiv.querySelector('.message-text')?.classList.add('tool-safety-card');
-}
-
-function formatToolResultForDisplay(payload) {
-    if (payload?.content) {
-        return payload.content;
-    }
-
-    const command = payload?.command ? `**Command**\n\n\`${payload.command}\`\n\n` : '';
-    const result = payload?.result
-        ? `**Result**\n\n\`\`\`json\n${JSON.stringify(payload.result, null, 2)}\n\`\`\``
-        : '*No tool result content returned.*';
-    return `${command}${result}`.trim();
-}
-
-function addToolResultToUI(payload) {
-    const requestId = String(payload?.requestId || '');
-    const content = formatToolResultForDisplay(payload);
-    const messageDiv = showMessage(content, 'ai');
-    messageDiv.querySelector('.message-text')?.classList.add('tool-result-card');
-    addMessageActions(messageDiv, content);
-
-    const timestamp = new Date().toISOString();
-    currentMessages.push({ role: 'assistant', content, timestamp });
-    messageDiv.dataset.timestamp = timestamp;
-
-    if (requestId && activeProposalCards.has(requestId)) {
-        const proposalCard = activeProposalCards.get(requestId);
-        proposalCard?.querySelector('.tool-approval-note')?.replaceChildren(document.createTextNode(
-            payload?.status === 'approved' || payload?.status === 'auto_approved'
-                ? 'Approved and completed.'
-                : payload?.status === 'denied'
-                    ? 'Denied. Bloom continued without this action.'
-                    : 'This action returned an error.'
-        ));
-        proposalCard?.querySelectorAll('button').forEach((button) => {
-            button.disabled = true;
-        });
-        activeProposalCards.delete(requestId);
-    }
-}
-
-function addTaskProposalToUI(proposal) {
-    const messageDiv = document.createElement('div');
-    const createdAt = new Date();
-    const risk = String(proposal?.risk || 'Medium').toUpperCase();
-    const rememberAllowed = Boolean(proposal?.rememberForSessionAllowed);
-    const paramsJson = JSON.stringify(proposal?.params || {}, null, 2);
-
-    messageDiv.className = 'message ai-message';
-    messageDiv.dataset.timestamp = createdAt.toISOString();
-    messageDiv.dataset.proposalId = String(proposal?.requestId || '');
-    messageDiv.__proposal = proposal;
-    messageDiv.innerHTML = `
-        <div class="message-avatar ai-avatar">
-            <i class="fa-solid fa-spa"></i>
-        </div>
-        <div class="message-content">
-            <div class="message-header">
-                <span class="message-author">Bloom AI</span>
-                <span class="message-time">${formatTime(createdAt)}</span>
-            </div>
-            <div class="message-text tool-approval-card tool-proposal-card">
-                <div class="tool-approval-header">
-                    <div class="tool-approval-title"><i class="fa-solid fa-shield-halved"></i> Agent wants to perform a task</div>
-                    <span class="tool-risk-pill">${risk}</span>
-                </div>
-                <div class="tool-approval-summary"><strong>Task:</strong> ${escapeHtml(proposal?.plainDescription || 'Local action')}</div>
-                <div class="tool-approval-summary"><strong>Why:</strong> ${escapeHtml(proposal?.reason || 'Bloom needs this to continue.')}</div>
-                <div class="tool-approval-summary"><strong>Command:</strong> <code>${escapeHtml(proposal?.command || '')}</code></div>
-                <div class="tool-approval-summary"><strong>Tier:</strong> ${escapeHtml(String(proposal?.permissionTier || 2))}</div>
-                <div class="tool-countdown-bar"><span></span></div>
-                <div class="tool-approval-note">This request will auto-deny in 30 seconds unless you choose.</div>
-                <div class="tool-edit-panel" hidden>
-                    <label class="setting-label">Edit Parameters (JSON)</label>
-                    <textarea class="skill-textarea tool-edit-textarea">${escapeHtml(paramsJson)}</textarea>
-                </div>
-                <div class="tool-approval-actions">
-                    <button class="message-action-btn tool-approve-btn" type="button">Allow Once</button>
-                    ${rememberAllowed ? '<button class="message-action-btn tool-session-btn" type="button">Allow This Session</button>' : ''}
-                    <button class="message-action-btn tool-edit-btn" type="button">Edit</button>
-                    <button class="message-action-btn tool-cancel-btn" type="button">Deny</button>
-                </div>
-            </div>
-        </div>
-    `;
-
-    messageContainer.appendChild(messageDiv);
-    scrollToBottom();
-    activeProposalCards.set(String(proposal?.requestId || ''), messageDiv);
-
-    const progressBar = messageDiv.querySelector('.tool-countdown-bar span');
-    if (progressBar) {
-        progressBar.animate(
-            [{ width: '100%' }, { width: '0%' }],
-            { duration: 30000, easing: 'linear', fill: 'forwards' }
-        );
-    }
-
-    const autoDenyTimer = window.setTimeout(() => {
-        resolveAgentProposal(messageDiv, 'deny');
-    }, 30000);
-    messageDiv.dataset.autoDenyTimer = String(autoDenyTimer);
-
-    messageDiv.querySelector('.tool-approve-btn')?.addEventListener('click', async () => {
-        await resolveAgentProposal(messageDiv, 'allow_once');
-    });
-    messageDiv.querySelector('.tool-session-btn')?.addEventListener('click', async () => {
-        await resolveAgentProposal(messageDiv, 'allow_session');
-    });
-    messageDiv.querySelector('.tool-cancel-btn')?.addEventListener('click', async () => {
-        await resolveAgentProposal(messageDiv, 'deny');
-    });
-    messageDiv.querySelector('.tool-edit-btn')?.addEventListener('click', () => {
-        const panel = messageDiv.querySelector('.tool-edit-panel');
-        if (panel) {
-            panel.hidden = !panel.hidden;
-        }
-    });
-
-    return messageDiv;
-}
-
-async function resolveAgentProposal(messageDiv, decision) {
-    const requestId = String(messageDiv?.dataset?.proposalId || '');
-    const note = messageDiv?.querySelector('.tool-approval-note');
-    const buttons = Array.from(messageDiv?.querySelectorAll('.tool-approve-btn, .tool-session-btn, .tool-edit-btn, .tool-cancel-btn') || []);
-    const textarea = messageDiv?.querySelector('.tool-edit-textarea');
-    const timerId = Number(messageDiv?.dataset?.autoDenyTimer || 0);
-    if (timerId) {
-        window.clearTimeout(timerId);
-    }
-
-    buttons.forEach((button) => {
-        button.disabled = true;
-    });
-    if (note) {
-        note.textContent = decision === 'deny'
-            ? 'Sending deny decision...'
-            : 'Sending approval decision...';
-    }
-
-    let editedParams = undefined;
-    if (textarea && !textarea.closest('.tool-edit-panel')?.hidden) {
-        try {
-            editedParams = JSON.parse(textarea.value);
-        } catch (error) {
-            if (note) {
-                note.textContent = `Could not parse edited JSON: ${error.message}`;
-            }
-            buttons.forEach((button) => {
-                button.disabled = false;
-            });
-            return;
-        }
-    }
-
-    try {
-        const response = await fetch(apiUrl('/agent/proposals/decision'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                requestId,
-                decision,
-                rememberForSession: decision === 'allow_session',
-                editedParams
-            })
-        });
-        const data = await response.json();
-        if (!response.ok) {
-            throw new Error(data?.detail || data?.message || `Request failed (${response.status})`);
-        }
-        if (decision === 'allow_session') {
-            const proposal = messageDiv?.__proposal || {};
-            permissionManager.rememberForSession({
-                ...proposal,
-                params: editedParams || proposal.params || {}
-            });
-        }
-        if (note) {
-            note.textContent = decision === 'deny'
-                ? 'Denied. Bloom will continue without this action.'
-                : 'Approved. Waiting for result...';
-        }
-    } catch (error) {
-        if (note) {
-            note.textContent = `Decision failed: ${error.message || String(error)}`;
-        }
-        buttons.forEach((button) => {
-            button.disabled = false;
-        });
-    }
-}
-
-function updateAgentModeUI() {
-    const active = isAgentModeActive();
-    if (agentModeBadge) {
-        agentModeBadge.hidden = !active;
-    }
-    if (agentCommandStrip) {
-        agentCommandStrip.hidden = !active;
-    }
-    if (agentModeToggle) {
-        agentModeToggle.checked = Boolean(settings.agentModeEnabled);
-    }
-    if (strictPermissionToggle) {
-        strictPermissionToggle.checked = Boolean(settings.strictPermissionMode);
-    }
-    if (networkToolToggle) {
-        networkToolToggle.checked = Boolean(settings.networkToolEnabled);
-    }
-    if (agentLoopDepthSlider) {
-        agentLoopDepthSlider.value = String(settings.maxAgentLoopDepth || 5);
-    }
-    if (agentLoopDepthValue) {
-        agentLoopDepthValue.textContent = String(settings.maxAgentLoopDepth || 5);
-    }
 }
 
 // Settings Functions
@@ -2547,13 +1724,8 @@ async function loadSettings() {
         settings.systemPrompt = String(settings.systemPrompt || '');
         settings.temperature = Number.isFinite(Number(settings.temperature)) ? Number(settings.temperature) : 0.7;
         settings.skills = normalizeSkills(settings.skills);
-        settings.mcpServers = normalizeMcpServers(settings.mcpServers);
         settings.monthlyTokenLimit = Math.max(1000, parseInt(String(settings.monthlyTokenLimit || '200000'), 10));
         settings.sidebarWidth = Math.max(220, Math.min(460, parseInt(String(settings.sidebarWidth || '300'), 10)));
-        settings.agentModeEnabled = Boolean(settings.agentModeEnabled);
-        settings.strictPermissionMode = Boolean(settings.strictPermissionMode);
-        settings.maxAgentLoopDepth = Math.max(1, Math.min(10, parseInt(String(settings.maxAgentLoopDepth || '5'), 10)));
-        settings.networkToolEnabled = Boolean(settings.networkToolEnabled);
 
         // Apply settings to UI
         applyThemeSelection(settings.theme);
@@ -2565,27 +1737,17 @@ async function loadSettings() {
             monthlyTokenLimitInput.value = String(settings.monthlyTokenLimit);
         }
         settings.developerMode = false;
-        settings.agenticCloudMode = false;
         currentModel = settings.defaultModel || currentModel;
         updateModelDisplay();
         applySidebarWidth(settings.sidebarWidth, false);
-        updateAgentModeUI();
         renderSkillsList();
-        renderMcpServersList();
-        syncMcpTransportFields();
-        await refreshMcpRuntimeStatus();
         renderUsageSummary();
-        permissionManager.render();
     } catch (error) {
         console.error('Failed to load settings:', error);
         applyThemeSelection(settings.theme);
         applySidebarWidth(settings.sidebarWidth, false);
-        updateAgentModeUI();
         renderSkillsList();
-        renderMcpServersList();
-        syncMcpTransportFields();
         renderUsageSummary();
-        permissionManager.render();
     }
 }
 
@@ -2676,58 +1838,6 @@ async function uploadSkillFromFile() {
     await saveSettings();
 }
 
-async function addMcpServerFromInputs() {
-    const name = String(mcpNameInput?.value || '').trim();
-    const transport = String(mcpTransportSelect?.value || 'stdio').trim().toLowerCase() === 'sse' ? 'sse' : 'stdio';
-    const command = String(mcpCommandInput?.value || '').trim();
-    const args = parseArgsInput(mcpArgsInput?.value || '');
-    const url = String(mcpUrlInput?.value || '').trim();
-    const env = parseEnvInput(mcpEnvInput?.value || '');
-    const description = String(mcpDescriptionInput?.value || '').trim();
-    const autoConnect = Boolean(mcpAutoConnectToggle?.checked);
-
-    if (!name) {
-        alert('Please add an MCP server name.');
-        return;
-    }
-    if (transport === 'stdio' && !command) {
-        alert('Please add an MCP command for stdio transport.');
-        return;
-    }
-    if (transport === 'sse' && !url) {
-        alert('Please add an SSE URL for this server.');
-        return;
-    }
-
-    const nextServers = normalizeMcpServers(settings.mcpServers);
-    nextServers.push({
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        name,
-        transport,
-        command,
-        args,
-        url,
-        env,
-        description,
-        enabled: true,
-        autoConnect
-    });
-
-    settings.mcpServers = nextServers;
-    renderMcpServersList();
-    await saveSettings();
-    await refreshMcpConnections();
-    await loadUsageSummary();
-
-    if (mcpNameInput) mcpNameInput.value = '';
-    if (mcpCommandInput) mcpCommandInput.value = '';
-    if (mcpArgsInput) mcpArgsInput.value = '';
-    if (mcpUrlInput) mcpUrlInput.value = '';
-    if (mcpEnvInput) mcpEnvInput.value = '';
-    if (mcpDescriptionInput) mcpDescriptionInput.value = '';
-    if (mcpAutoConnectToggle) mcpAutoConnectToggle.checked = true;
-}
-
 async function openLocalPath(targetPath) {
     const pathValue = String(targetPath || '').trim();
     if (!pathValue) return;
@@ -2751,7 +1861,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyZoomLevel(1);
     updateSidebarToggleState();
     setSettingsPanelOpen(false);
-    syncMcpTransportFields();
 
     if (sidebarResizeZone) {
         sidebarResizeZone.addEventListener('mousedown', onSidebarResizeStart);
@@ -2766,14 +1875,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             applyPromptTemplate(card.dataset.prompt);
         });
     }
-    if (agentCommandStrip) {
-        agentCommandStrip.addEventListener('click', (event) => {
-            const chip = event.target.closest('[data-agent-prompt]');
-            if (!chip) return;
-            applyPromptTemplate(chip.dataset.agentPrompt);
-        });
-    }
-
     if (window.windowControls?.isMaximized) {
         try {
             const isMaximized = await window.windowControls.isMaximized();
@@ -2810,7 +1911,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         await loadUsageSummary();
         await loadSessions();
         await refreshRuntimeStatus();
-        permissionManager.render();
         if (runtimeStatusTimer) {
             clearInterval(runtimeStatusTimer);
         }
@@ -2820,15 +1920,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }, 15000);
 
-        // Show app, hide loader
-        loadingScreen.style.opacity = '0';
-        setTimeout(() => {
-            loadingScreen.style.display = 'none';
-            appContainer.classList.add('loaded');
-        }, 500);
+        revealAppShell();
     } else {
         backendStatus.textContent = 'Backend failed to start';
-        alert('Failed to start backend server. Please make sure Ollama is running on port 11434.');
+        showBackendUnavailableState();
+        alert('Bloom could not reach the backend server. The app shell is open so you can check setup, but AI chat will stay unavailable until the backend starts.');
     }
 
     // Initial session creation
@@ -3043,49 +2139,7 @@ settingsCloseBtn?.addEventListener('click', () => {
     setSettingsPanelOpen(false);
 });
 
-agentModeToggle?.addEventListener('change', async (event) => {
-    settings.agentModeEnabled = event.target.checked;
-    updateAgentModeUI();
-    await saveSettings();
-});
 
-strictPermissionToggle?.addEventListener('change', async (event) => {
-    settings.strictPermissionMode = event.target.checked;
-    updateAgentModeUI();
-    await saveSettings();
-});
-
-networkToolToggle?.addEventListener('change', async (event) => {
-    settings.networkToolEnabled = event.target.checked;
-    updateAgentModeUI();
-    await saveSettings();
-});
-
-agentLoopDepthSlider?.addEventListener('input', () => {
-    const nextValue = Math.max(1, Math.min(10, parseInt(String(agentLoopDepthSlider.value || '5'), 10)));
-    settings.maxAgentLoopDepth = nextValue;
-    if (agentLoopDepthValue) {
-        agentLoopDepthValue.textContent = String(nextValue);
-    }
-    scheduleSettingsSave();
-});
-
-permissionSessionList?.addEventListener('click', (event) => {
-    const button = event.target.closest('.permission-revoke-btn');
-    if (!button) return;
-    permissionManager.revoke(button.dataset.permissionKey);
-});
-
-resetPermissionsBtn?.addEventListener('click', () => {
-    permissionManager.resetAll();
-});
-
-openAuditLogBtn?.addEventListener('click', async () => {
-    const result = await window.systemAPI?.openAuditLog?.();
-    if (!result?.success) {
-        alert(`Could not open the audit log.\n\n${result?.error || 'Unknown error'}`);
-    }
-});
 
 monthlyTokenLimitInput?.addEventListener('change', () => {
     const nextLimit = Math.max(1000, parseInt(String(monthlyTokenLimitInput.value || '200000'), 10));
@@ -3101,22 +2155,6 @@ openModelsPathBtn?.addEventListener('click', async () => {
 
 openSessionsPathBtn?.addEventListener('click', async () => {
     await openLocalPath(settingsSessionsPath?.textContent);
-});
-
-welcomeInstallOllamaBtn?.addEventListener('click', async () => {
-    const result = await window.shellAPI?.openExternal?.('https://ollama.com/download');
-    if (!result?.success) {
-        alert(`Could not open Ollama download page.\n\n${result?.error || 'Unknown error'}`);
-    }
-});
-
-welcomeRefreshModelsBtn?.addEventListener('click', async () => {
-    await loadModels();
-    await refreshRuntimeStatus();
-});
-
-welcomeOpenSettingsBtn?.addEventListener('click', () => {
-    setSettingsPanelOpen(true);
 });
 
 // Skills
@@ -3145,67 +2183,6 @@ skillsList?.addEventListener('click', async (event) => {
         renderSkillsList();
         await saveSettings();
     }
-});
-
-addMcpBtn?.addEventListener('click', async () => {
-    await addMcpServerFromInputs();
-});
-
-applyMcpPresetBtn?.addEventListener('click', () => {
-    applyMcpPreset();
-});
-
-refreshMcpBtn?.addEventListener('click', async () => {
-    await refreshMcpConnections();
-});
-
-mcpTransportSelect?.addEventListener('change', () => {
-    syncMcpTransportFields();
-});
-
-mcpList?.addEventListener('click', async (event) => {
-    const item = event.target.closest('.mcp-item');
-    if (!item) return;
-
-    const mcpId = item.dataset.mcpId;
-    if (event.target.closest('.mcp-delete-btn')) {
-        settings.mcpServers = normalizeMcpServers(settings.mcpServers).filter((server) => server.id !== mcpId);
-        renderMcpServersList();
-        await saveSettings();
-        await refreshMcpConnections();
-        await loadUsageSummary();
-        return;
-    }
-
-    if (event.target.closest('.mcp-test-btn')) {
-        await testMcpServer(mcpId);
-        return;
-    }
-
-    if (event.target.closest('.mcp-reconnect-btn')) {
-        await reconnectMcpServer(mcpId);
-    }
-});
-
-mcpList?.addEventListener('change', async (event) => {
-    const checkbox = event.target.closest('.mcp-checkbox');
-    if (!checkbox) return;
-    const item = checkbox.closest('.mcp-item');
-    if (!item) return;
-
-    const mcpId = item.dataset.mcpId;
-    settings.mcpServers = normalizeMcpServers(settings.mcpServers).map((server) => {
-        if (server.id === mcpId) {
-            return {
-                ...server,
-                enabled: checkbox.checked
-            };
-        }
-        return server;
-    });
-
-    await saveSettings();
-    await refreshMcpConnections();
 });
 
 skillsList?.addEventListener('change', async (event) => {
@@ -3267,13 +2244,8 @@ async function saveSettings() {
     const payload = {
         ...settings,
         skills: normalizeSkills(settings.skills),
-        mcpServers: normalizeMcpServers(settings.mcpServers),
         monthlyTokenLimit: Math.max(1000, parseInt(String(settings.monthlyTokenLimit || '200000'), 10)),
         sidebarWidth: Math.max(220, Math.min(460, parseInt(String(settings.sidebarWidth || '300'), 10))),
-        agentModeEnabled: Boolean(settings.agentModeEnabled),
-        strictPermissionMode: Boolean(settings.strictPermissionMode),
-        maxAgentLoopDepth: Math.max(1, Math.min(10, parseInt(String(settings.maxAgentLoopDepth || '5'), 10))),
-        networkToolEnabled: Boolean(settings.networkToolEnabled)
     };
 
     try {
@@ -3297,264 +2269,6 @@ const chatObserver = new MutationObserver(() => {
 chatObserver.observe(messageContainer, { childList: true, subtree: false });
 
 
-// ─── Task Panel ────────────────────────────────────────────────────────────────
-
-let taskWs = null;
-let taskFilter = 'all';
-let selectedTaskId = null;
-
-const taskPanel = document.getElementById('task-panel');
-const taskToggle = document.getElementById('task-toggle');
-const taskPanelCloseBtn = document.getElementById('task-panel-close-btn');
-const taskGoalInput = document.getElementById('task-goal-input');
-const taskRoleSelect = document.getElementById('task-role-select');
-const taskSpawnBtn = document.getElementById('task-spawn-btn');
-const taskList = document.getElementById('task-list');
-const taskEmptyState = document.getElementById('task-empty-state');
-const taskDetailPane = document.getElementById('task-detail-pane');
-const taskDetailTitle = document.getElementById('task-detail-title');
-const taskDetailMeta = document.getElementById('task-detail-meta');
-const taskProgressBar = document.getElementById('task-progress-bar');
-const taskLogViewer = document.getElementById('task-log-viewer');
-const taskCancelBtn = document.getElementById('task-cancel-btn');
-const taskPauseBtn = document.getElementById('task-pause-btn');
-const taskResumeBtn = document.getElementById('task-resume-btn');
-const taskDetailCloseBtn = document.getElementById('task-detail-close-btn');
-
-function initTaskPanel() {
-    if (!taskToggle) return;
-    taskToggle.addEventListener('click', toggleTaskPanel);
-    taskPanelCloseBtn?.addEventListener('click', closeTaskPanel);
-    taskSpawnBtn?.addEventListener('click', spawnTaskFromForm);
-    taskGoalInput?.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') spawnTaskFromForm();
-    });
-    taskCancelBtn?.addEventListener('click', () => performTaskAction(selectedTaskId, 'cancel'));
-    taskPauseBtn?.addEventListener('click', () => performTaskAction(selectedTaskId, 'pause'));
-    taskResumeBtn?.addEventListener('click', () => performTaskAction(selectedTaskId, 'resume'));
-    taskDetailCloseBtn?.addEventListener('click', closeTaskDetail);
-
-    document.querySelectorAll('.task-filter-tab').forEach((tab) => {
-        tab.addEventListener('click', () => {
-            document.querySelectorAll('.task-filter-tab').forEach((t) => t.classList.remove('active'));
-            tab.classList.add('active');
-            taskFilter = tab.dataset.filter;
-            refreshTaskList();
-        });
-    });
-
-    connectTaskWebSocket();
-    loadInitialTasks();
-}
-
-function toggleTaskPanel() {
-    if (!taskPanel) return;
-    const isHidden = taskPanel.hidden;
-    taskPanel.hidden = !isHidden;
-    taskToggle?.classList.toggle('active', isHidden);
-    if (isHidden) refreshTaskList();
-}
-
-function closeTaskPanel() {
-    if (!taskPanel) return;
-    taskPanel.hidden = true;
-    taskToggle?.classList.remove('active');
-}
-
-async function spawnTaskFromForm() {
-    const goal = taskGoalInput?.value.trim();
-    if (!goal) return;
-    const role = taskRoleSelect?.value || 'file';
-    try {
-        const res = await fetch(apiUrl('/tasks/spawn'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ goal, role, model: currentModel || 'llama3', temperature: 0.7, max_steps: 5 })
-        });
-        const data = await res.json();
-        if (data.success) {
-            taskGoalInput.value = '';
-            await refreshTaskList();
-        }
-    } catch (err) {
-        console.error('Spawn task failed:', err);
-    }
-}
-
-async function loadInitialTasks() {
-    await refreshTaskList();
-}
-
-async function refreshTaskList() {
-    try {
-        const res = await fetch(apiUrl('/tasks'));
-        const data = await res.json();
-        renderTaskList(data.tasks || []);
-    } catch (err) {
-        console.error('Failed to load tasks:', err);
-    }
-}
-
-function renderTaskList(tasks) {
-    if (!taskList) return;
-    const filtered = tasks.filter((t) => {
-        if (taskFilter === 'all') return true;
-        if (taskFilter === 'active') return ['pending', 'running', 'paused'].includes(t.status);
-        return t.status === taskFilter;
-    });
-
-    if (filtered.length === 0) {
-        taskList.innerHTML = '';
-        taskList.appendChild(taskEmptyState || createEmptyState());
-        return;
-    }
-
-    taskList.innerHTML = '';
-    filtered.forEach((task) => {
-        const el = createTaskItem(task);
-        taskList.appendChild(el);
-    });
-}
-
-function createEmptyState() {
-    const div = document.createElement('div');
-    div.className = 'task-empty-state';
-    div.id = 'task-empty-state';
-    div.innerHTML = '<i class="fa-solid fa-folder-open"></i><p>No tasks yet. Spawn one above.</p>';
-    return div;
-}
-
-function createTaskItem(task) {
-    const div = document.createElement('div');
-    div.className = `task-item${task.id === selectedTaskId ? ' selected' : ''}`;
-    div.dataset.taskId = task.id;
-
-    const iconMap = {
-        planner: 'fa-solid fa-lg fa-compass',
-        file: 'fa-solid fa-lg fa-file-lines',
-        search: 'fa-solid fa-lg fa-magnifying-glass',
-        shell: 'fa-solid fa-lg fa-terminal',
-        test: 'fa-solid fa-lg fa-flask',
-        review: 'fa-solid fa-lg fa-clipboard-check',
-    };
-    const icon = iconMap[task.role] || 'fa-solid fa-lg fa-cube';
-
-    div.innerHTML = `
-        <div class="task-item-icon ${task.role}">
-            <i class="${icon}"></i>
-        </div>
-        <div class="task-item-info">
-            <div class="task-item-title">${escHtml(task.title)}</div>
-            <div class="task-item-meta">${escHtml(task.role)} &bull; ${formatRelTime(task.created_at)}</div>
-        </div>
-        <span class="task-status-badge ${task.status}">${task.status}</span>
-    `;
-
-    div.addEventListener('click', () => openTaskDetail(task.id));
-    return div;
-}
-
-async function openTaskDetail(taskId) {
-    selectedTaskId = taskId;
-    try {
-        const res = await fetch(apiUrl(`/tasks/${taskId}`));
-        const data = await res.json();
-        const task = data.task;
-        if (!task) return;
-
-        taskDetailTitle.textContent = task.title;
-        taskDetailMeta.textContent = `${task.role} &bull; ${task.status} &bull; ${formatRelTime(task.created_at)}`;
-
-        const progress = Math.round((task.progress || 0) * 100);
-        taskProgressBar.style.setProperty('--progress', `${progress}%`);
-
-        taskLogViewer.textContent = (task.output_logs || []).join('\n') || 'No output yet.';
-
-        taskCancelBtn.hidden = ['done', 'failed', 'cancelled'].includes(task.status);
-        taskPauseBtn.hidden = task.status !== 'running';
-        taskResumeBtn.hidden = task.status !== 'paused';
-
-        taskDetailPane.hidden = false;
-
-        document.querySelectorAll('.task-item').forEach((el) => {
-            el.classList.toggle('selected', el.dataset.taskId === taskId);
-        });
-    } catch (err) {
-        console.error('Failed to load task detail:', err);
-    }
-}
-
-function closeTaskDetail() {
-    selectedTaskId = null;
-    taskDetailPane.hidden = true;
-}
-
-async function performTaskAction(taskId, action) {
-    try {
-        await fetch(apiUrl(`/tasks/${taskId}/${action}`), { method: 'POST' });
-        await refreshTaskList();
-        if (selectedTaskId === taskId) await openTaskDetail(taskId);
-    } catch (err) {
-        console.error(`Task ${action} failed:`, err);
-    }
-}
-
-function connectTaskWebSocket() {
-    if (taskWs) {
-        taskWs.close();
-    }
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${proto}//127.0.0.1:8000/tasks/ws`;
-
-    try {
-        taskWs = new WebSocket(wsUrl);
-
-        taskWs.onmessage = (event) => {
-            try {
-                const msg = JSON.parse(event.data);
-                if (msg.type === 'task_status' || msg.type === 'task_output' || msg.type === 'task_progress' || msg.type === 'task_error' || msg.type === 'task_done') {
-                    refreshTaskList();
-                    if (selectedTaskId === msg.task_id) {
-                        openTaskDetail(selectedTaskId);
-                    }
-                }
-            } catch (_) {}
-        };
-
-        taskWs.onclose = () => {
-            setTimeout(connectTaskWebSocket, 3000);
-        };
-
-        taskWs.onerror = () => {
-            taskWs.close();
-        };
-    } catch (_) {
-        setTimeout(connectTaskWebSocket, 5000);
-    }
-}
-
-function escHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str || '';
-    return div.innerHTML;
-}
-
-function formatRelTime(isoString) {
-    if (!isoString) return '';
-    try {
-        const date = new Date(isoString);
-        const now = new Date();
-        const diff = Math.floor((now - date) / 1000);
-        if (diff < 60) return 'just now';
-        if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-        if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-        return `${Math.floor(diff / 86400)}d ago`;
-    } catch (_) {
-        return '';
-    }
-}
-
-document.addEventListener('DOMContentLoaded', initTaskPanel);
 
 
 
