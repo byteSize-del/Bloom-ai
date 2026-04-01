@@ -1,4 +1,49 @@
+// Preload scripts for Bloom AI Chat
+// Expose protected IPC renderer methods to the web page
+
 const { contextBridge, ipcRenderer } = require('electron');
+
+// Expose protected methods that allow the renderer to use IPC
+// without exposing the entire ipcRenderer to the window
+contextBridge.exposeInMainWorld('electronAPI', {
+  // Example: copy to clipboard
+  copyToClipboard: (text) => ipcRenderer.invoke('copy-to-clipboard'),
+  // Example: get app version
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  // Example: check if dev
+  isDev: () => ipcRenderer.invoke('is-dev'),
+  // Example: open external link
+  openExternal: (url) => shell.openExternal(url),
+  // Example: show open dialog
+  showOpenDialog: () => ipcRenderer.invoke('show-open-dialog'),
+  // Example: show save dialog
+  showSaveDialog: () => ipcRenderer.invoke('show-save-dialog'),
+  // Example: send a message to main process and get response
+  invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+  // Example: listen to an event from main process
+  on: (channel, listener) => {
+    const subscription = (_event, ...args) => listener(...args);
+    ipcRenderer.on(channel, subscription);
+    return () => {
+      ipcRenderer.removeListener(channel, subscription);
+    };
+  },
+  // Example: remove listener
+  removeListener: (channel, listener) => {
+    ipcRenderer.removeListener(channel, listener);
+  }
+});
+
+// Also expose the shell and clipboard if needed (but be cautious)
+// We can expose specific safe methods
+contextBridge.exposeInMainWorld('shell', {
+  openExternal: (url) => require('electron').shell.openExternal(url)
+});
+
+contextBridge.exposeInMainWorld('clipboard', {
+  writeText: (text) => require('electron').clipboard.writeText(text),
+  readText: () => require('electron').clipboard.readText()
+});
 
 // Expose protected methods that allow the renderer process to use
 // the IPC renderer without exposing the entire Node.js API

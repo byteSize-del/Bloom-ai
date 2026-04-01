@@ -1,6 +1,10 @@
-const { app, BrowserWindow, shell, dialog, ipcMain, clipboard } = require('electron');
-const { spawn, spawnSync } = require('child_process');
-const path = require('path');
+// Bloom AI Chat - Main Electron Application
+// Efficient and robust Electron application with backend and Ollama support
+
+const { app, BrowserWindow, shell, dialog, ipcMain, clipboard, Menu } = require('electron');
+const path = require('node:path');
+const isDev = !app.isPackaged;
+
 const fs = require('fs');
 const os = require('os');
 const http = require('http');
@@ -603,7 +607,10 @@ function createWindow() {
   });
 
   // Load the frontend
-  mainWindow.loadFile('frontend/index.html');
+  const startURL = app.isPackaged
+    ? `file://${path.join(__dirname, '../frontend/index.html')}`
+    : `file://${path.join(__dirname, '../frontend/index.html')}`;
+  mainWindow.loadURL(startURL);
 
   // Focus the window when ready
   mainWindow.on('ready-to-show', () => {
