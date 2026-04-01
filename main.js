@@ -626,6 +626,7 @@ function createWindow() {
     backgroundColor: '#0d0d0d',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      enableRemoteModule: false,
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
@@ -638,9 +639,12 @@ function createWindow() {
   });
 
   // Load the frontend
-  const startURL = app.isPackaged
-    ? `file://${path.join(__dirname, '../frontend/index.html')}`
-    : `file://${path.join(__dirname, '../frontend/index.html')}`;
+  const appDirectory = app.isPackaged
+    ? path.dirname(process.execPath)
+    : __dirname;
+  const frontendPath = path.join(appDirectory, 'frontend', 'index.html');
+  const startURL = `file://${frontendPath}`;
+  console.log(`Loading frontend from: ${startURL}`);
   mainWindow.loadURL(startURL);
 
   // Focus the window when ready
@@ -648,6 +652,11 @@ function createWindow() {
     console.log('Window ready-to-show event fired');
     mainWindow.focus();
   });
+
+  // Open DevTools to see any errors (for debugging)
+  if (!app.isPackaged) {
+    mainWindow.webContents.openDevTools();
+  }
 
   // Ensure window is focused on creation
   mainWindow.focus();
@@ -660,6 +669,16 @@ function createWindow() {
       console.warn(`Blocked external URL: ${url}`);
     }
     return { action: 'deny' };
+  });
+
+  // Add error listeners for debugging
+  mainWindow.webContents.on('crashed', () => {
+    console.error('Renderer process crashed');
+    dialog.showErrorBox('Error', 'The renderer process has crashed. Please restart the app.');
+  });
+
+  mainWindow.webContents.on('unresponsive', () => {
+    console.error('Renderer process is not responding');
   });
 
   // Context menu

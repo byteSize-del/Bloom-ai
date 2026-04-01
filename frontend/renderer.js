@@ -794,16 +794,18 @@ async function checkBackend() {
 }
 
 async function waitBackendReady() {
-    const maxRetries = 60;
+    console.log('[Backend] Waiting for backend to be ready...');\n    const maxRetries = 60;
     const retryInterval = 500;
 
     for (let i = 0; i < maxRetries; i++) {
         if (await checkBackend()) {
-            return true;
+            console.log('[Backend] Backend is ready!');\n            return true;
         }
+        if (i % 10 === 0) {
+            console.log(`[Backend] Retry ${i}/${maxRetries}...`);\n        }
         await new Promise(resolve => setTimeout(resolve, retryInterval));
     }
-    return false;
+    console.error('[Backend] Backend failed to respond after all retries');\n    return false;
 }
 
 function revealAppShell() {
@@ -1953,10 +1955,14 @@ function hideOllamaNotification() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-    applyZoomLevel(1);
-    updateSidebarToggleState();
-    setSettingsPanelOpen(false);
+    console.log('[Renderer] DOMContentLoaded fired, initializing...');
     
+    try {
+        applyZoomLevel(1);
+        updateSidebarToggleState();
+        setSettingsPanelOpen(false);
+        
+        console.log('[Renderer] Basic initialization complete');
     // Setup Ollama handlers
     setupOllamaHandlers();
 
@@ -2027,6 +2033,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initial session creation
     createNewSession();
+    console.log('[Renderer] Initialization complete - app ready');
+    } catch (error) {
+        console.error('[Renderer] Fatal initialization error:', error);
+        console.error('[Renderer] Stack:', error.stack);
+        loadingScreen.style.display = 'none';
+        appContainer.style.opacity = '1';
+        alert(`Initialization failed: ${error.message}`);
+    }
 });
 
 // Input Handling
