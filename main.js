@@ -331,13 +331,23 @@ function resolveOllamaExecutable() {
   }
 
   const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+  const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+  const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+  
   const candidates = [
     path.join(localAppData, 'Programs', 'Ollama', 'ollama.exe'),
-    path.join(localAppData, 'Programs', 'Ollama', 'Ollama.exe')
+    path.join(localAppData, 'Programs', 'Ollama', 'Ollama.exe'),
+    path.join(programFiles, 'Ollama', 'ollama.exe'),
+    path.join(programFiles, 'Ollama', 'Ollama.exe'),
+    path.join(programFilesX86, 'Ollama', 'ollama.exe'),
+    path.join(programFilesX86, 'Ollama', 'Ollama.exe'),
+    path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Ollama', 'ollama.exe'),
+    path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Ollama', 'Ollama.exe')
   ];
 
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
+      console.log(`Found Ollama at: ${candidate}`);
       return candidate;
     }
   }
@@ -345,7 +355,8 @@ function resolveOllamaExecutable() {
   try {
     const whereResult = spawnSync('where', ['ollama'], {
       windowsHide: true,
-      encoding: 'utf8'
+      encoding: 'utf8',
+      timeout: 3000
     });
 
     if (whereResult.status === 0 && typeof whereResult.stdout === 'string') {
@@ -354,6 +365,7 @@ function resolveOllamaExecutable() {
         .map((line) => line.trim())
         .find(Boolean);
       if (first && fs.existsSync(first)) {
+        console.log(`Found Ollama in PATH: ${first}`);
         return first;
       }
     }
@@ -361,6 +373,7 @@ function resolveOllamaExecutable() {
     console.warn('Failed to resolve Ollama from PATH:', error.message);
   }
 
+  console.warn('Ollama executable not found in any known locations');
   return null;
 }
 
@@ -445,27 +458,45 @@ async function promptInstallOllama() {
 }
 
 async function ensureOllamaRunningInBackground() {
+  console.log('Checking if Ollama is running...');
   if (await isOllamaResponsive()) {
+    console.log('Ollama is already running and responsive');
     ollamaStartedByBloom = false;
     ollamaProcessPid = null;
     return true;
   }
 
+  console.log('Ollama not responsive, attempting to resolve executable...');
   const ollamaExecutable = resolveOllamaExecutable();
   if (!ollamaExecutable) {
-    await promptInstallOllama();
+    console.warn('Ollama executable not found on system');
+    if (mainWindow) {
+      mainWindow.webContents.send('ollama/not-found');
+    }
     return false;
   }
 
+  console.log(`Starting Ollama from: ${ollamaExecutable}`);
   const started = startOllamaInBackground(ollamaExecutable);
   if (!started) {
-    await promptInstallOllama();
+    console.error('Failed to start Ollama process');
+    if (mainWindow) {
+      mainWindow.webContents.send('ollama/failed-to-start');
+    }
     return false;
   }
 
   const ready = await waitForOllamaReady();
-  if (!ready) {
+  if (ready) {
+    console.log('Ollama is ready and responsive');
+    if (mainWindow) {
+      mainWindow.webContents.send('ollama/ready');
+    }
+  } else {
     console.warn('Ollama launch command issued, but service did not respond in time.');
+    if (mainWindow) {
+      mainWindow.webContents.send('ollama/not-responding');
+    }
   }
   return ready;
 }
@@ -676,35 +707,63 @@ function createWindow() {
 
 async function startBackendAndCreateWindow() {
   try {
+    console.log('Starting Bloom AI Chat...');
     // Create window first so user sees something
     createWindow();
+    console.log('Main window created');
 
-    // Ensure Ollama is available and running in background.
-    const ollamaReady = await ensureOllamaRunningInBackground();
-    if (!ollamaReady) {
-      dialog.showErrorBox(
-        'Ollama Not Ready',
-        'Bloom could not start Ollama automatically. Install or open Ollama, then relaunch Bloom.'
-      );
-    }
-
-    // Start backend in background with timeout
-    const backendPromise = createBackend();
-    const timeoutPromise = new Promise((resolve) => {
-      setTimeout(() => resolve({ error: 'timeout' }), 15000);
+    // Start Ollama check in background (non-blocking)
+    ensureOllamaRunningInBackground().catch((err) => {
+      console.error('Background Ollama check error:', err);
     });
 
-    const result = await Promise.race([backendPromise, timeoutPromise]);
+    // Start backend in background with timeout (non-blocking)
+    createBackend().catch((err) => {
+      console.error('Backend startup error:', err);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('backend/error', err.message);
+      }
+    });
 
-    if (result?.error === 'timeout') {
-      console.warn('Backend startup timed out, showing window anyway');
-      dialog.showErrorBox('Backend Warning', 'The backend server took too long to start. The app will continue but some features may not work.\n\nPlease ensure Ollama is running and Python backend dependencies are installed.');
-    }
+    console.log('Backend and Ollama startup initiated in background');
   } catch (error) {
     console.error('Startup failed:', error);
     // Show error but keep window open
-    dialog.showErrorBox('Startup Error', `Failed to start backend: ${error.message}\n\nThe app will continue but AI features may not work. Check console for details.`);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('app/error', error.message);
+    }
   }
+}
+
+// Background Ollama detection and startup retry
+function startBackgroundOllamaMonitor() {
+  let retryCount = 0;
+  const maxRetries = 5;
+  
+  const monitor = setInterval(async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      clearInterval(monitor);
+      return;
+    }
+
+    const isResponsive = await isOllamaResponsive();
+    
+    if (isResponsive) {
+      console.log('Ollama is now responsive');
+      mainWindow.webContents.send('ollama/ready');
+      clearInterval(monitor);
+      return;
+    }
+
+    if (retryCount < maxRetries && !ollamaStartedByBloom) {
+      console.log(`Ollama retry attempt ${retryCount + 1}/${maxRetries}`);
+      const executable = resolveOllamaExecutable();
+      if (executable) {
+        startOllamaInBackground(executable);
+      }
+      retryCount++;
+    }
+  }, 5000); // Check every 5 seconds
 }
 
 // Request single instance lock before app readiness handlers
@@ -724,7 +783,11 @@ if (!gotLock) {
     }
   });
 
-  app.whenReady().then(startBackendAndCreateWindow);
+  app.whenReady().then(() => {
+    startBackendAndCreateWindow();
+    // Start monitoring Ollama status periodically
+    setTimeout(() => startBackgroundOllamaMonitor(), 2000);
+  });
 }
 
 app.on('window-all-closed', () => {
@@ -759,6 +822,40 @@ app.on('before-quit', () => {
 });
 
 // IPC Handlers for communication between main and renderer
+
+// Ollama status handlers
+ipcMain.handle('ollama/check-status', async () => {
+  const isResponsive = await isOllamaResponsive();
+  return {
+    isResponsive,
+    startedByBloom: ollamaStartedByBloom,
+    downloadUrl: OLLAMA_DOWNLOAD_URL
+  };
+});
+
+ipcMain.handle('ollama/download', async () => {
+  try {
+    await shell.openExternal(OLLAMA_DOWNLOAD_URL);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('ollama/start', async () => {
+  console.log('User requested Ollama start');
+  const executable = resolveOllamaExecutable();
+  if (!executable) {
+    return { success: false, error: 'Ollama not found on system' };
+  }
+  const started = startOllamaInBackground(executable);
+  if (started) {
+    const ready = await waitForOllamaReady(20000);
+    return { success: ready, error: ready ? null : 'Ollama timed out' };
+  }
+  return { success: false, error: 'Failed to start Ollama' };
+});
+
 ipcMain.handle('chat/send-message', async (event, message, model, history) => {
   return new Promise((resolve, reject) => {
     const postData = JSON.stringify({

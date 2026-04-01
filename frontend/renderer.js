@@ -69,6 +69,11 @@ const statusRuntimePill = document.getElementById('status-runtime-pill');
 const statusHardwarePill = document.getElementById('status-hardware-pill');
 const openModelsPathBtn = document.getElementById('open-models-path-btn');
 const openSessionsPathBtn = document.getElementById('open-sessions-path-btn');
+const ollamaNotification = document.getElementById('ollama-notification');
+const ollamaNotificationTitle = document.getElementById('ollama-notification-title');
+const ollamaNotificationMessage = document.getElementById('ollama-notification-message');
+const ollamaDownloadBtn = document.getElementById('ollama-download-btn');
+const ollamaRetryBtn = document.getElementById('ollama-retry-btn');
 const API_BASE = 'http://127.0.0.1:8000';
 const SETTINGS_SAVE_DEBOUNCE_MS = 250;
 const APP_CONTROL_BLOCK_RESPONSE = "I can’t directly open Notepad or any other app on your computer right now in Bloom. I can guide you step-by-step, and direct app control may be added in a future update.";
@@ -1857,10 +1862,103 @@ function applyPromptTemplate(prompt) {
 }
 
 // Event Listeners
+// Ollama Notification Handler
+function setupOllamaHandlers() {
+    // Listen for Ollama status messages from main process
+    if (window.electron?.onOllamaNotFound) {
+        window.electron.onOllamaNotFound(() => {
+            showOllamaNotification('not-found');
+        });
+    }
+
+    if (window.electron?.onOllamaFailedToStart) {
+        window.electron.onOllamaFailedToStart(() => {
+            showOllamaNotification('failed-to-start');
+        });
+    }
+
+    if (window.electron?.onOllamaNotResponding) {
+        window.electron.onOllamaNotResponding(() => {
+            showOllamaNotification('not-responding');
+        });
+    }
+
+    if (window.electron?.onOllamaReady) {
+        window.electron.onOllamaReady(() => {
+            hideOllamaNotification();
+        });
+    }
+
+    // Add button listeners if elements exist
+    if (ollamaDownloadBtn) {
+        ollamaDownloadBtn.addEventListener('click', async () => {
+            try {
+                await window.api?.invoke?.('ollama/download');
+            } catch (error) {
+                console.error('Failed to download Ollama:', error);
+            }
+        });
+    }
+
+    if (ollamaRetryBtn) {
+        ollamaRetryBtn.addEventListener('click', async () => {
+            showOllamaNotification('checking');
+            try {
+                const result = await window.api?.invoke?.('ollama/start');
+                if (result?.success) {
+                    hideOllamaNotification();
+                } else {
+                    showOllamaNotification('failed-to-start');
+                }
+            } catch (error) {
+                console.error('Failed to retry Ollama:', error);
+                showOllamaNotification('failed-to-start');
+            }
+        });
+    }
+}
+
+function showOllamaNotification(status) {
+    if (!ollamaNotification) return;
+    
+    const messages = {
+        'not-found': {
+            title: 'Ollama Not Found',
+            message: 'Bloom requires Ollama to be installed for AI chat. Please download and install it.'
+        },
+        'failed-to-start': {
+            title: 'Failed to Start Ollama',
+            message: 'Could not start Ollama. Please ensure it is installed and try again.'
+        },
+        'not-responding': {
+            title: 'Ollama Not Responding',
+            message: 'Ollama is not responding. Please check if it is running properly.'
+        },
+        'checking': {
+            title: 'Checking Ollama...',
+            message: 'Attempting to start Ollama...'
+        }
+    };
+    
+    const msg = messages[status] || messages['not-found'];
+    if (ollamaNotificationTitle) ollamaNotificationTitle.textContent = msg.title;
+    if (ollamaNotificationMessage) ollamaNotificationMessage.textContent = msg.message;
+    ollamaNotification.style.display = 'block';
+}
+
+function hideOllamaNotification() {
+    if (ollamaNotification) {
+        ollamaNotification.style.display = 'none';
+    }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     applyZoomLevel(1);
     updateSidebarToggleState();
     setSettingsPanelOpen(false);
+    
+    // Setup Ollama handlers
+    setupOllamaHandlers();
 
     if (sidebarResizeZone) {
         sidebarResizeZone.addEventListener('mousedown', onSidebarResizeStart);

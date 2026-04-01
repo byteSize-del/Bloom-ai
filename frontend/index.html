@@ -9,56 +9,58 @@
     <title>Bloom - Tech AI Chat</title>
     <link rel="stylesheet" href="./vendor/fontawesome/css/all.min.css">
     <style>
-        /* CSS Variables for Tech Glass Theme Re-design */
+        /* CSS Variables for Professional Dark Neon Theme */
         :root {
-            --bg-primary: #111827; /* Darker modern background */
-            --bg-secondary: #1F2937;
-            --bg-tertiary: #374151;
-            --bg-accent: #4B5563;
-            --bg-elevated: #1F2937;
-            --text-primary: #F9FAFB;
-            --text-secondary: #D1D5DB;
-            --text-muted: #9CA3AF;
-            --border-color: #374151;
-            --border-subtle: #4B5563;
-            --accent-color: #3B82F6;
-            --accent-hover: #60A5FA;
-            --accent-glow: rgba(59, 130, 246, 0.42);
-            --accent-gradient: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%);
-            --user-bubble: #1E3A8A;
-            --ai-bubble: #1F2937;
-            --success-color: #10B981;
-            --warning-color: #F59E0B;
-            --error-color: #EF4444;
+            --bg-primary: #0A0E27; /* Deep dark navy */
+            --bg-secondary: #151B3F;
+            --bg-tertiary: #1E2454;
+            --bg-accent: #262F5F;
+            --bg-elevated: #1A1F42;
+            --text-primary: #F5F7FF;
+            --text-secondary: #C8D0F0;
+            --text-muted: #8892B8;
+            --border-color: #2A3459;
+            --border-subtle: #1F2852;
+            --accent-color: #00D9FF; /* Cyan neon */
+            --accent-hover: #00F0FF;
+            --accent-glow: rgba(0, 217, 255, 0.3);
+            --accent-gradient: linear-gradient(135deg, #0099FF 0%, #00D9FF 100%);
+            --accent-secondary: #7C3AED; /* Purple accent */
+            --accent-secondary-glow: rgba(124, 58, 237, 0.2);
+            --user-bubble: #1A2A4F;
+            --ai-bubble: #1B2540;
+            --success-color: #00FF41;
+            --warning-color: #FFB700;
+            --error-color: #FF4460;
             --sidebar-width: 320px;
-            --content-max-width: 1000px;
-            --transition-speed: 0.3s;
-            --glass-bg: rgba(31, 41, 55, 0.72);
-            --glass-border: rgba(156, 196, 255, 0.16);
+            --content-max-width: 1100px;
+            --transition-speed: 0.25s;
+            --glass-bg: rgba(15, 20, 50, 0.75);
+            --glass-border: rgba(0, 217, 255, 0.15);
             --topbar-height: 48px;
-            --border-radius: 12px;
+            --border-radius: 10px;
         }
 
         /* Light Theme Variables */
         [data-theme="light"] {
-            --bg-primary: #edf3ff;
-            --bg-secondary: #ffffff;
-            --bg-tertiary: #edf4ff;
-            --bg-accent: #e2ecff;
-            --bg-elevated: #ffffff;
-            --text-primary: #0f1a2c;
-            --text-secondary: #415372;
-            --text-muted: #6a7e9f;
-            --border-color: #c6d9f8;
-            --border-subtle: #d7e5fb;
-            --accent-color: #3f7cff;
-            --accent-hover: #2a67ea;
-            --accent-glow: rgba(63, 124, 255, 0.22);
-            --accent-gradient: linear-gradient(135deg, #3f7cff 0%, #5cb4ff 100%);
-            --user-bubble: #d6e8ff;
-            --ai-bubble: #eef5ff;
-            --glass-bg: rgba(246, 251, 255, 0.82);
-            --glass-border: rgba(46, 102, 197, 0.14);
+            --bg-primary: #F8FAFF;
+            --bg-secondary: #FFFFFF;
+            --bg-tertiary: #F3F7FF;
+            --bg-accent: #EBF1FF;
+            --bg-elevated: #FFFFFF;
+            --text-primary: #0D1426;
+            --text-secondary: #3B4565;
+            --text-muted: #6B7A99;
+            --border-color: #D1DCF0;
+            --border-subtle: #E5ECFF;
+            --accent-color: #0099FF;
+            --accent-hover: #0077CC;
+            --accent-glow: rgba(0, 153, 255, 0.2);
+            --accent-gradient: linear-gradient(135deg, #0099FF 0%, #00D9FF 100%);
+            --user-bubble: #DDE7FF;
+            --ai-bubble: #E8F0FF;
+            --glass-bg: rgba(248, 250, 255, 0.85);
+            --glass-border: rgba(0, 153, 255, 0.12);
         }
 
         * {
@@ -70,9 +72,9 @@
         body {
             font-family: 'Segoe UI', 'Inter', 'SF Pro Text', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
             background:
-                radial-gradient(1200px 640px at -10% -20%, rgba(79, 139, 255, 0.24), transparent 60%),
-                radial-gradient(980px 540px at 115% -5%, rgba(75, 214, 255, 0.18), transparent 58%),
-                linear-gradient(145deg, rgba(255, 255, 255, 0.04), transparent 22%),
+                radial-gradient(1400px 700px at 20% 10%, rgba(0, 153, 255, 0.15), transparent 50%),
+                radial-gradient(1200px 600px at 80% 90%, rgba(124, 58, 237, 0.12), transparent 55%),
+                linear-gradient(145deg, rgba(0, 217, 255, 0.03), transparent 35%),
                 var(--bg-primary);
             color: var(--text-primary);
             height: 100vh;
@@ -2349,6 +2351,80 @@
             }
         }
 
+        /* Ollama Notification Banner */
+        .ollama-notification {
+            background: linear-gradient(135deg, rgba(255, 68, 96, 0.1), rgba(255, 100, 120, 0.05));
+            border: 1px solid rgba(255, 68, 96, 0.3);
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            backdrop-filter: blur(10px);
+        }
+
+        .notification-content {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+        }
+
+        .notification-icon {
+            flex-shrink: 0;
+            color: #FF4460;
+            font-size: 18px;
+            min-width: 24px;
+            text-align: center;
+        }
+
+        .notification-text {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .notification-title {
+            color: var(--text-primary);
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .notification-message {
+            color: var(--text-secondary);
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .notification-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .notification-btn {
+            background: rgba(0, 217, 255, 0.15);
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            color: var(--accent-color);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .notification-btn:hover {
+            background: rgba(0, 217, 255, 0.25);
+            border-color: rgba(0, 217, 255, 0.5);
+            transform: translateY(-1px);
+        }
+
     </style>
 </head>
 
@@ -2618,6 +2694,29 @@
 
             <!-- Chat Area -->
             <div class="chat-area" id="chat-area">
+                <!-- Ollama Status Notification -->
+                <div class="ollama-notification" id="ollama-notification" style="display: none;">
+                    <div class="notification-content">
+                        <div class="notification-icon">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                        </div>
+                        <div class="notification-text">
+                            <div class="notification-title" id="ollama-notification-title">Ollama Not Found</div>
+                            <div class="notification-message" id="ollama-notification-message">
+                                Bloom requires Ollama to be installed for AI chat features.
+                            </div>
+                        </div>
+                        <div class="notification-actions">
+                            <button class="notification-btn" id="ollama-download-btn">
+                                <i class="fa-solid fa-download"></i> Download
+                            </button>
+                            <button class="notification-btn" id="ollama-retry-btn">
+                                <i class="fa-solid fa-rotate-right"></i> Retry
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="welcome-message" id="welcome-message">
                     <div class="welcome-icon">
                         <i class="fa-solid fa-spa"></i>
