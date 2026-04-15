@@ -34,21 +34,36 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Secure CORS configuration - only allow explicit trusted origins
+# Never allow "null" origin as it can be exploited by malicious apps
 allowed_origins = [
     origin.strip()
     for origin in os.environ.get(
         "ALLOWED_ORIGINS",
-        "null,http://127.0.0.1,http://localhost",
+        "http://127.0.0.1,http://localhost",
     ).split(",")
-    if origin.strip()
+    if origin.strip() and origin.strip() != "null"
 ]
+
+# Validate that all origins are valid URLs (not just "null" or wildcards)
+validated_origins = []
+for origin in allowed_origins:
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(origin)
+        # Only allow http/https schemes with valid hosts
+        if parsed.scheme in ("http", "https") and parsed.netloc:
+            validated_origins.append(origin)
+    except Exception:
+        pass  # Skip invalid origins
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=validated_origins,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type"],
+    max_age=600,
 )
 
 ollama_handler = OllamaHandler()

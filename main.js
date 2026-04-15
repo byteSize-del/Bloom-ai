@@ -25,12 +25,34 @@ const ALLOWED_EXTERNAL_HOSTS = new Set([
   'github.com',
   'www.github.com'
 ]);
+// Windows system paths that should never be accessed
 const SYSTEM_BLOCKED_PATHS = [
   'C:\\Windows\\System32',
   'C:\\Windows\\SysWOW64',
   'C:\\Program Files',
   'C:\\Program Files (x86)',
   'C:\\ProgramData'
+];
+
+// Allowed base directories for file operations (whitelist approach)
+const ALLOWED_BASE_DIRS = [];
+
+// Whitelist of allowed read-only commands (more secure than blocklist)
+const ALLOWED_COMMANDS = [
+  'dir',
+  'ls',
+  'ipconfig',
+  'whoami',
+  'echo',
+  'type',
+  'cat',
+  'tasklist',
+  'systeminfo',
+  'hostname',
+  'ver',
+  'vol',
+  'cd',
+  'pwd'
 ];
 const SYSTEM_BLOCKED_COMMANDS = [
   'format',
@@ -171,20 +193,103 @@ function isAllowedExternalUrl(url) {
   }
 }
 
+// Initialize allowed base directories on app ready
+function initializeAllowedBaseDirs() {
+  const appDataDir = app.getPath('appData');
+  const homeDir = os.homedir();
+  // Only allow operations within app data directory and user's home directory
+  ALLOWED_BASE_DIRS.push(
+    path.join(appDataDir, 'OfflineAIChat'),
+    path.join(homeDir, 'bloom-workspace'),
+    path.join(homeDir, 'Documents', 'bloom')
+  );
+  // Ensure the base directories exist
+  ALLOWED_BASE_DIRS.forEach(dir => {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+    } catch (e) {
+      // Directory may already exist or cannot be created
+    }
+  });
+}
+
 function normalizeUserPath(rawPath) {
-  const value = String(rawPath || '').trim().replace(/^["']|["']$/g, '');
+  const value = String(rawPath || '').trim().replace(/^[\"']|[\"']$/g, '');
   if (!value) {
     throw new Error('Path is required.');
   }
-  return path.resolve(value);
+  
+  // Resolve and normalize the path to prevent traversal attacks
+  const resolved = path.resolve(value);
+  const normalizedResolved = path.normalize(resolved).toLowerCase();
+  
+  // Check for path traversal attempts using ".." 
+  if (resolved.includes('..')) {
+    throw new Error('Path traversal is not allowed.');
+  }
+  
+  // Verify the path is within an allowed base directory (whitelist approach)
+  const isAllowed = ALLOWED_BASE_DIRS.some(baseDir => {
+    const normalizedBase = path.normalize(baseDir).toLowerCase();
+    return normalizedResolved === normalizedBase || 
+           normalizedResolved.startsWith(normalizedBase + path.sep);
+  });
+  
+  if (!isAllowed) {
+    throw new Error('Access denied: Path is outside allowed directories.');
+  }
+  
+  return resolved;
 }
 
 function isBlockedSystemPath(targetPath) {
-  const candidate = String(targetPath || '').toLowerCase().replace(/[\\\/]+$/, '');
-  return SYSTEM_BLOCKED_PATHS.some((blockedPath) => {
-    const blocked = blockedPath.toLowerCase().replace(/[\\\/]+$/, '');
-    return candidate === blocked || candidate.startsWith(`${blocked}\\`);
+  const candidate = String(targetPath || '').toLowerCase().replace(/[\\\\\\/]+$/, '');
+  
+  // First check if path is in blocked system paths (defense in depth)
+  const isBlocked = SYSTEM_BLOCKED_PATHS.some((blockedPath) => {
+    const blocked = blockedPath.toLowerCase().replace(/[\\\\\\/]+$/, '');
+    return candidate === blocked || candidate.startsWith(`${blocked}\\\\`);
   });
+  
+  if (isBlocked) {
+    return true;
+  }
+  
+  // Additional check: ensure path doesn't attempt to escape allowed directories
+  const normalizedCandidate = path.normalize(candidate);
+  const hasTraversal = normalizedCandidate.includes('..');
+  
+  return hasTraversal;
+}
+
+// Check if command is in the allowed whitelist (secure approach)
+function isAllowedCommand(command) {
+  const normalized = String(command || '').trim().toLowerCase();
+  
+  // Extract the base command (first word)
+  const baseCommand = normalized.split(/\s+/)[0];
+  
+  // Check if base command is in whitelist
+  return ALLOWED_COMMANDS.some(allowed => baseCommand === allowed);
+}
+
+// Additional validation to prevent command injection via pipes, redirects, etc.
+function hasCommandInjectionPatterns(command) {
+  const normalized = String(command || '').trim().toLowerCase();
+  const dangerousPatterns = [
+    '|',      // pipe
+    '>',      // redirect output
+    '<',      // redirect input
+    '&',       // background/and
+    ';',       // command separator
+    '`',       // command substitution
+    '$(',      // command substitution
+    '%',       // variable expansion (Windows)
+    '&&',      // logical AND
+    '||'       // logical OR
+  ];
+  
+  return dangerousPatterns.some(pattern => normalized.includes(pattern));
 }
 
 function isBlockedSystemCommand(command) {
@@ -198,7 +303,6 @@ function isReadOnlyCommand(command) {
   return readOnlyPrefixes.some((prefix) => normalized.startsWith(prefix))
     && !['>', 'del ', 'erase ', 'move ', 'copy ', 'ren ', 'mkdir ', 'rmdir ', 'remove-item', 'set-content', 'out-file'].some((token) => normalized.includes(token));
 }
-
 async function getSystemInfoPayload() {
   const runtime = await getRuntimeStatus();
   const totalMem = os.totalmem();
@@ -614,6 +718,9 @@ async function createBackend() {
 }
 
 function createWindow() {
+
+  // Initialize allowed base directories for secure file operations
+  initializeAllowedBaseDirs();
   const appIconPath = app.isPackaged
     ? path.join(process.resourcesPath, 'icon.png')
     : path.join(__dirname, 'frontend', 'assets', 'icon.png');
